@@ -21,6 +21,8 @@ __all__ = ["app"]
 
 
 class OutputFormat(StrEnum):
+    """Output format for violation reporting."""
+
     text = "text"
     json = "json"
 

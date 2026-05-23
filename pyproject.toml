@@ -57,7 +57,6 @@ target-version = "py311"
 line-length = 100
 exclude = [ ".claude/", ".venv/", ".worktrees/", "tests/fixtures/" ]
 preview = true
-fix = true
 format.indent-style = "space"
 format.quote-style = "double"
 lint.select = [
@@ -111,7 +110,7 @@ lint.per-file-ignores."tests/**" = [
   "TC003",   # Path annotation in test fixtures is fine without TYPE_CHECKING
 ]
 lint.isort.known-first-party = [ "codecongruence" ]
-lint.pydocstyle.convention = "google"  # Explicitly force Google style documentation syntax
+lint.pydocstyle.convention = "google"
 
 [tool.typos]
 default.extend-words.codecongruence = "codecongruence"
@@ -119,6 +118,7 @@ default.extend-words.fastembed = "fastembed"
 default.extend-words.MTEB = "MTEB"
 default.extend-words.docstring = "docstring"
 default.extend-words.docstrings = "docstrings"
+default.extend-words.tsts = "tsts"
 
 [tool.bandit]
 exclude_dirs = [ "tests", ".venv", ".worktrees" ]
@@ -187,6 +187,8 @@ report.exclude_also = [
 [tool.interrogate]
 ignore-init-module = true
 ignore-magic = true
+ignore-semiprivate = true
+ignore-private = true
 ignore-setters = true
 ignore-overloaded-functions = true
 fail-under = 100
@@ -209,8 +211,19 @@ MD040 = false
 MD025 = false
 
 [tool.vulture]
+min_confidence = 80
 ignore_decorators = [ "@app.*", "@*.command", "@*.callback" ]
-ignore_names = [ "exc_type", "exc_val", "exc_tb" ]
+ignore_names = [
+  "exc_type",
+  "exc_val",
+  "exc_tb",
+  "model_config",  # Pydantic class-level config, read at class creation time
+  "description",   # Rule protocol attribute, used by reporters at runtime
+  "covers",        # ChangedFile public API, used in tests
+  "enabled_rules", # CodeCongruenceConfig public API
+  "extra",         # RuleConfig helper, accessed by rules via getattr
+  "documents",     # EmbeddingBackend Protocol method parameter
+]
 paths = [ "src/codecongruence" ]
 verbose = false
 exclude = [

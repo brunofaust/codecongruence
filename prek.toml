@@ -119,7 +119,7 @@ hooks = [
   {
     id = "validate-pyproject",
     name = "🐍 python · Validate pyproject.toml",
-    additional_dependencies = ["validate-pyproject-schema-store[all]"]
+    additional_dependencies = []
   }
 ]
 
@@ -177,7 +177,7 @@ hooks = [
       "ruff",
       "mdformat-mkdocs"
     ],
-    exclude = { glob = ["TODO.md"] }
+    exclude = { glob = ["TODO.md", "src/codecongruence/rules/D005_changelog_exists/README.md"] }
   }
 ]
 
