@@ -57,13 +57,13 @@ edge cases where the embedding-only score is borderline.
 ## Why local embeddings rather than an LLM
 
 1. **Determinism.** A pre-commit hook must give the same answer twice. Local
-   ONNX inference is deterministic; cloud LLMs drift.
-2. **Cost.** Pre-commit runs on every commit. Even with caching, an LLM-based
-   check creates ongoing API spend per contributor.
-3. **Privacy.** Many enterprise codebases legally cannot send code to a
-   third-party API.
-4. **Speed.** `bge-small-en-v1.5` embeds dozens of short texts per second on
-   a CPU; an LLM round-trip is hundreds of milliseconds *per pair*.
+    ONNX inference is deterministic; cloud LLMs drift.
+1. **Cost.** Pre-commit runs on every commit. Even with caching, an LLM-based
+    check creates ongoing API spend per contributor.
+1. **Privacy.** Many enterprise codebases legally cannot send code to a
+    third-party API.
+1. **Speed.** `bge-small-en-v1.5` embeds dozens of short texts per second on
+    a CPU; an LLM round-trip is hundreds of milliseconds *per pair*.
 
 The trade-off is **expressivity**: an embedding model can't reason about
 "this function deletes a row but its name says it gets one" the way a frontier
@@ -76,13 +76,13 @@ positive rate stays low.
 The defaults below are conservative starting points biased toward **low false
 positives** so the hook does not become annoying. Tune up over time.
 
-| Rule | Default | Rationale |
-|---|---|---|
-| `docstring_vs_body` | 0.30 | bge-small cosine on aligned docstring/body pairs sits ~0.45-0.60; misaligned pairs cluster <0.20. 0.30 leaves a comfortable buffer. |
-| `name_vs_body` | 0.25 | Names are very short → low absolute cosine even when aligned. Pairs paraphrased names with body via abbreviation expansion. |
-| `claude_md_vs_diff` | 0.20 | Diffs include git markers + filenames that artificially boost similarity; lower threshold compensates. |
-| `pr_description_vs_diff` | 0.25 | Same dynamics as `claude_md_vs_diff`, slightly tighter because PR descriptions are usually higher-quality prose. |
-| `stale_comments` | 0.20 | Inline comments are very short; aligned pairs sit ~0.30-0.50. 0.20 catches the egregious cases without flagging good code. |
+| Rule                     | Default | Rationale                                                                                                                            |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `docstring_vs_body`      | 0.30    | bge-small cosine on aligned docstring/body pairs sits ~0.45-0.60; misaligned pairs cluster \<0.20. 0.30 leaves a comfortable buffer. |
+| `name_vs_body`           | 0.25    | Names are very short → low absolute cosine even when aligned. Pairs paraphrased names with body via abbreviation expansion.          |
+| `claude_md_vs_diff`      | 0.20    | Diffs include git markers + filenames that artificially boost similarity; lower threshold compensates.                               |
+| `pr_description_vs_diff` | 0.25    | Same dynamics as `claude_md_vs_diff`, slightly tighter because PR descriptions are usually higher-quality prose.                     |
+| `stale_comments`         | 0.20    | Inline comments are very short; aligned pairs sit ~0.30-0.50. 0.20 catches the egregious cases without flagging good code.           |
 
 A future v0.2 milestone is to validate these against the CoCC + LLM-judge
 labelled datasets.
