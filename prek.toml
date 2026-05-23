@@ -109,6 +109,14 @@ hooks = [
     entry = "uv run pytest -q",
     pass_filenames = false,
     types = ["python"]
+  },
+  {
+    id = "codecongruence",
+    name = "🧠 semantic · codecongruence (self)",
+    language = "system",
+    entry = "uv run codecongruence",
+    pass_filenames = false,
+    require_serial = true
   }
 ]
 
