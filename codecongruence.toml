@@ -56,4 +56,4 @@ context_lines = 5
 enabled = true
 threshold = 0.20
 trigger_paths = ["src/**"]
-docs_files = ["CHANGELOG.md", "README.md"]
+docs_files = ["README.md"]

@@ -298,3 +298,14 @@ hooks = [
     name = "🐍 python · Detect unused code"
   }
 ]
+
+[[repos]]
+repo = "https://github.com/commitizen-tools/commitizen"
+rev = "v4.8.3"
+hooks = [
+  {
+    id = "commitizen",
+    name = "📝 git · Validate conventional commit message",
+    stages = ["commit-msg"]
+  }
+]
