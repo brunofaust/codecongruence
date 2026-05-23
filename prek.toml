@@ -104,8 +104,7 @@ hooks = [
     language = "system",
     entry = "uv run pytest -q",
     pass_filenames = false,
-    types = ["python"],
-    stages = ["push"]
+    types = ["python"]
   },
   {
     id = "codecongruence",
