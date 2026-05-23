@@ -60,7 +60,9 @@ class ChangedFile:
             :class:`~codecongruence.parsers.base.FunctionInfo` for each non-excluded function.
         """
         for func in parser.iter_functions(source, self.path):
-            if not any(s <= func.line_start and func.line_end <= e for s, e in self.excluded_fn_ranges):
+            if not any(
+                s <= func.line_start and func.line_end <= e for s, e in self.excluded_fn_ranges
+            ):
                 yield func
 
     def iter_comments(

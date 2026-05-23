@@ -36,16 +36,18 @@ dependencies = [
   "tree-sitter-typescript>=0.21",
   "typer>=0.12",
 ]
-optional-dependencies.dev = [
-  "prek",
-  "pytest>=8.2",
-  "pytest-asyncio>=0.23",
-  "pytest-cov>=5",
-]
 urls.Homepage = "https://github.com/brunofaust/codecongruence"
 urls.Issues = "https://github.com/brunofaust/codecongruence/issues"
 urls.Repository = "https://github.com/brunofaust/codecongruence"
 scripts.codecongruence = "codecongruence.cli:app"
+
+[dependency-groups]
+dev = [
+  "prek>=0.4.1",
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=5",
+]
 
 [tool.hatch]
 build.targets.wheel.packages = [ "src/codecongruence" ]
@@ -86,16 +88,6 @@ lint.ignore = [
   "S101",    # assert is fine for non-test runtime invariants
   "SIM105",  # contextlib.suppress vs try/except/pass is a style call
 ]
-lint.per-file-ignores."tests/**" = [
-  "ANN",     # Allow docstring style violations in tests, since they often have less formal docstring needs
-  "D",
-  "DOC",
-  "PLR2004",
-  "RUF069",  # float equality in tests is intentional (exact values from TOML / cosine algebra)
-  "S",
-  "S101",
-  "TC003",   # Path annotation in test fixtures is fine without TYPE_CHECKING
-]
 lint.per-file-ignores."src/codecongruence/parsers/__init__.py" = [
   "PLW0717", # try clause has many statements — parser registration pattern is intentional
   "RUF067",  # registry functions belong in __init__.py for this package's public API
@@ -107,6 +99,16 @@ lint.per-file-ignores."src/codecongruence/parsers/javascript.py" = [
 ]
 lint.per-file-ignores."src/codecongruence/parsers/python.py" = [
   "PLR6301", # iter_comments satisfies LanguageParser Protocol — cannot be static
+]
+lint.per-file-ignores."tests/**" = [
+  "ANN",     # Allow docstring style violations in tests, since they often have less formal docstring needs
+  "D",
+  "DOC",
+  "PLR2004",
+  "RUF069",  # float equality in tests is intentional (exact values from TOML / cosine algebra)
+  "S",
+  "S101",
+  "TC003",   # Path annotation in test fixtures is fine without TYPE_CHECKING
 ]
 lint.isort.known-first-party = [ "codecongruence" ]
 lint.pydocstyle.convention = "google"  # Explicitly force Google style documentation syntax

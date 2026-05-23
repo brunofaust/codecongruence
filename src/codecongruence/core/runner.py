@@ -41,7 +41,9 @@ def _apply_file_excludes(changed: list[ChangedFile], patterns: list[str]) -> lis
     return [cf for cf in changed if not any(fnmatch(str(cf.path), pat) for pat in patterns)]
 
 
-def _apply_function_excludes(changed: list[ChangedFile], exclude_fns: list[str]) -> list[ChangedFile]:
+def _apply_function_excludes(
+    changed: list[ChangedFile], exclude_fns: list[str]
+) -> list[ChangedFile]:
     if not exclude_fns:
         return changed
     result: list[ChangedFile] = []
@@ -163,7 +165,9 @@ class RuleRunner:
                     group.create_task(
                         rule.check(
                             _apply_function_excludes(
-                                _apply_file_excludes(changed, self.config.rule(rule.rule_id).exclude),
+                                _apply_file_excludes(
+                                    changed, self.config.rule(rule.rule_id).exclude
+                                ),
                                 self.config.rule(rule.rule_id).exclude_functions,
                             ),
                             self.embedder,
