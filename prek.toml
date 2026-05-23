@@ -1,0 +1,292 @@
+default_language_version.python = "3.11"
+
+exclude = { glob = [".claude/**", ".worktrees/**", "conftest.py", ".venv/**", ".mypy_cache/**", ".pytest_cache/**", ".ruff_cache/**"] }
+
+[[repos]]
+repo = "https://github.com/pre-commit/pre-commit-hooks"
+rev = "v6.0.0"
+hooks = [
+  {
+    id = "check-json",
+    name = "✅ check · Validate json files"
+  },
+  {
+    id = "check-toml",
+    name = "✅ check · Validate toml files"
+  },
+  {
+    id = "check-yaml",
+    name = "✅ check · Validate yaml files"
+  },
+  {
+    id = "end-of-file-fixer",
+    name = "✅ check · Fix end of file"
+  },
+  {
+    id = "trailing-whitespace",
+    name = "✅ check · Trailing whitespaces"
+  },
+  {
+    id = "debug-statements",
+    name = "✅ check · Debug statements"
+  },
+  {
+    id = "mixed-line-ending",
+    name = "✅ check · Mixed line ending"
+  },
+  {
+    id = "check-case-conflict",
+    name = "📁 filesystem/📝 names · Check case sensitivity"
+  },
+  {
+    id = "check-executables-have-shebangs",
+    name = "📁 filesystem/⚙️ exec · Verify script permissions"
+  },
+  {
+    id = "name-tests-test",
+    name = "🧪 test · Validate test naming",
+    args = ["--pytest-test-first"],
+    files = "^tests/.+\\.py$",
+    exclude = { glob = ["tests/conftest.py", "tests/**/__init__.py"] }
+  },
+  {
+    id = "check-symlinks",
+    name = "📁 filesystem/🔗 symlink · Check symlink validity"
+  },
+  {
+    id = "destroyed-symlinks",
+    name = "📁 filesystem/🔗 symlink · Detect broken symlinks"
+  },
+  {
+    id = "check-merge-conflict",
+    name = "🌳 git · Detect conflict markers"
+  },
+  {
+    id = "forbid-new-submodules",
+    name = "🌳 git · Prevent submodule creation"
+  },
+  {
+    id = "no-commit-to-branch",
+    name = "🌳 git · Protect main branches"
+  },
+  {
+    id = "check-added-large-files",
+    name = "🌳 git · Block large file commits",
+    args = ["--maxkb=10000"]
+  }
+]
+
+[[repos]]
+repo = "https://github.com/astral-sh/uv-pre-commit"
+rev = "0.11.15"
+hooks = [
+  {
+    id = "uv-lock",
+    name = "📦 uv · Lock dependencies"
+  }
+]
+
+[[repos]]
+repo = "https://github.com/pre-commit/mirrors-mypy"
+rev = "v1.16.0"
+hooks = [
+  {
+    id = "mypy",
+    name = "🐍 python · Validate with Mypy",
+    pass_filenames = false,
+    additional_dependencies = ["numpy"],
+    stages = ["push"]
+  }
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "pytest",
+    name = "🧪 python · Run pytest",
+    language = "system",
+    entry = "uv run pytest -q",
+    pass_filenames = false,
+    types = ["python"]
+  }
+]
+
+[[repos]]
+repo = "http://github.com/abravalheri/validate-pyproject"
+rev = "v0.25"
+hooks = [
+  {
+    id = "validate-pyproject",
+    name = "🐍 python · Validate pyproject.toml",
+    additional_dependencies = []
+  }
+]
+
+[[repos]]
+repo = "http://github.com/tox-dev/pyproject-fmt"
+rev = "v2.21.2"
+hooks = [
+  {
+    id = "pyproject-fmt",
+    name = "🐍 python · Format pyproject.toml"
+  }
+]
+
+[[repos]]
+repo = "http://github.com/Lucas-C/pre-commit-hooks"
+rev = "v1.5.6"
+hooks = [
+  {
+    id = "remove-crlf",
+    name = "✅ check · Remove CRLF"
+  },
+  {
+    id = "remove-tabs",
+    name = "✅ check · Remove tabs"
+  }
+]
+
+[[repos]]
+repo = "http://github.com/igorshubovych/markdownlint-cli"
+rev = "v0.48.0"
+hooks = [
+  {
+    id = "markdownlint-fix",
+    name = "📝 markdown · Fix markdown",
+    args = [
+      "--config",
+      "pyproject.toml",
+      "--configPointer",
+      "/tool/markdownlint",
+      "--disable",
+      "MD013"
+    ]
+  }
+]
+
+[[repos]]
+repo = "http://github.com/hukkin/mdformat"
+rev = "1.0.0"
+hooks = [
+  {
+    id = "mdformat",
+    name = "📝 markdown · Format markdown",
+    additional_dependencies = [
+      "mdformat-ruff",
+      "ruff",
+      "mdformat-mkdocs"
+    ],
+    exclude = { glob = ["TODO.md", "src/codecongruence/rules/D005_changelog_exists/README.md"] }
+  }
+]
+
+[[repos]]
+repo = "http://github.com/asottile/pyupgrade"
+rev = "v3.21.2"
+hooks = [
+  {
+    id = "pyupgrade",
+    name = "🐍 python · Upgrade syntax 3.11+",
+    args = ["--py311-plus"]
+  }
+]
+
+[[repos]]
+repo = "http://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.15.14"
+hooks = [
+  {
+    id = "ruff-check",
+    name = "🐍 python · Check with Ruff",
+    args = ["--fix"]
+  },
+  {
+    id = "ruff-format",
+    name = "🐍 python · Format with Ruff"
+  }
+]
+
+[[repos]]
+repo = "http://github.com/crate-ci/typos"
+rev = "v1.46.2"
+hooks = [
+  {
+    id = "typos",
+    name = "🔍 content · Check typos",
+    args = [
+    ]
+  }
+]
+
+[[repos]]
+repo = "http://github.com/econchick/interrogate"
+rev = "1.7.0"
+hooks = [
+  {
+    id = "interrogate",
+    name = "🐍 python · Check docstrings",
+    pass_filenames = false
+  }
+]
+
+[[repos]]
+repo = "http://github.com/PyCQA/bandit"
+rev = "1.9.4"
+hooks = [
+  {
+    id = "bandit",
+    name = "🔒 security · Detect common security issues",
+    args = [
+      "-c",
+      "pyproject.toml"
+    ]
+  }
+]
+
+[[repos]]
+repo = "http://github.com/gitleaks/gitleaks"
+rev = "v8.30.1"
+hooks = [
+  {
+    id = "gitleaks",
+    name = "🔒 security · Detect secrets"
+  }
+]
+
+[[repos]]
+repo = "https://github.com/pre-commit/pygrep-hooks"
+rev = "v1.10.0"
+hooks = [
+  {
+    id = "python-check-blanket-type-ignore",
+    name = "🐍 python · Enforce not blanket #type: ignore",
+    exclude = { glob = ["tests/**"] }
+  },
+  {
+    id = "python-check-mock-methods",
+    name = "🐍 python · Prevent common mistakes of mocking"
+  },
+  {
+    id = "python-no-log-warn",
+    name = "🐍 python · Not using deprecated log.warn"
+  },
+  {
+    id = "python-use-type-annotations",
+    name = "🐍 python · Enforce type annotations not comments"
+  },
+  {
+    id = "text-unicode-replacement-char",
+    name = "🐍 python · Forbid UTF-8 Unicode replacement character"
+  }
+]
+
+[[repos]]
+repo = "https://github.com/jendrikseipp/vulture"
+rev = "v2.16"
+hooks = [
+  {
+    id = "vulture",
+    name = "🐍 python · Detect unused code"
+  }
+]
