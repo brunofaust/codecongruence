@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated, split_identifier
-from codecongruence.rules.base import RuleViolation
+from codecongruence.rules.base import RuleViolation, strip_comments
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +49,7 @@ class ParamNameVsUsageRule:
         threshold = self.default_threshold if config.threshold is None else config.threshold
         min_body_statement_count = int(getattr(config, "min_body_statement_count", 2) or 2)
         min_param_name_chars = int(getattr(config, "min_param_name_chars", 2) or 2)
+        include_comments = bool(getattr(config, "include_comments", True))
 
         violations: list[RuleViolation] = []
         for cf in changed_files:
@@ -79,6 +80,7 @@ class ParamNameVsUsageRule:
                     log.debug("C002 SKIP not_in_diff %s::%s", cf.path, func.qualified_name)
                     continue
 
+                body = func.body_source if include_comments else strip_comments(func.body_source)
                 details_map = {name: (ann, dflt) for name, ann, dflt in func.parameter_details}
                 for param in func.parameters:
                     clean = param.lstrip("*")
@@ -91,7 +93,7 @@ class ParamNameVsUsageRule:
                         )
                         continue
 
-                    usage = _usage_context(clean, func.body_source)
+                    usage = _usage_context(clean, body)
                     if not usage:
                         log.debug(
                             "C002 SKIP unused_param %s::%s  param=%s",
@@ -101,9 +103,8 @@ class ParamNameVsUsageRule:
                         )
                         continue
 
-                    name_expanded = split_identifier(clean)
                     annotation, default = details_map.get(clean, ("", ""))
-                    left = " ".join(filter(None, [name_expanded, annotation, default]))
+                    left = " ".join(filter(None, [split_identifier(clean), annotation, default]))
                     sim = await embedder.similarity(left, usage)
                     log.debug(
                         "C002 %s::%s  param=%s  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",

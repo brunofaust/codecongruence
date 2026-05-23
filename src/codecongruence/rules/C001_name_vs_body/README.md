@@ -28,7 +28,16 @@ enabled = true
 threshold = 0.25
 min_body_statement_count = 2   # skip trivial bodies (AST statement count)
 ignore_names = ["main", "run", "setup", "handle"]
+include_comments = false       # strip # / // comments before embedding (default)
 ```
+
+### `include_comments` (default `false`)
+
+By default, inline comments are stripped from the body before embedding.
+A comment like `# send invoice email` next to unrelated code would otherwise
+inflate name-vs-body similarity and hide the drift.
+
+Set to `true` if you want comments to count as part of what the body does.
 
 ## Notes
 

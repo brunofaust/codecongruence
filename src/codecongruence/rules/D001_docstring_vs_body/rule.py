@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING
 
 from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
-from codecongruence.rules.base import RuleViolation
+from codecongruence.rules.base import RuleViolation, strip_comments
 
 log = logging.getLogger(__name__)
 
@@ -20,23 +19,6 @@ if TYPE_CHECKING:
     from codecongruence.core.git import ChangedFile
 
 __all__ = ["DocstringVsBodyRule"]
-
-# Matches inline and full-line comments for Python (#) and JS/TS (//).
-# The (?<!:) lookbehind preserves https:// URLs.
-INLINE_COMMENT_RE = re.compile(r"(?<!:)\s*(?:#|//).*$", re.MULTILINE)
-
-
-def strip_comments(source: str) -> str:
-    """Remove inline and full-line comments, then drop blank lines.
-
-    Args:
-        source: Raw function body source text.
-
-    Returns:
-        Source with ``#`` and ``//`` comments removed and blank lines stripped.
-    """
-    cleaned = INLINE_COMMENT_RE.sub("", source)
-    return "\n".join(line for line in cleaned.splitlines() if line.strip())
 
 
 class DocstringVsBodyRule:

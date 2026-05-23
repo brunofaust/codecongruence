@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated, split_identifier
-from codecongruence.rules.base import RuleViolation
+from codecongruence.rules.base import RuleViolation, strip_comments
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ class NameVsBodyRule:
         """
         threshold = self.default_threshold if config.threshold is None else config.threshold
         min_body_statement_count = int(getattr(config, "min_body_statement_count", 2) or 2)
+        include_comments = bool(getattr(config, "include_comments", False))
         ignore: frozenset[str] = frozenset(
             getattr(config, "ignore_names", None) or _GENERIC_NAMES_DEFAULT
         )
@@ -97,13 +98,14 @@ class NameVsBodyRule:
                     log.debug("C001 SKIP empty_name %s::%s", cf.path, func.qualified_name)
                     continue
 
-                sim = await embedder.similarity(name_expanded, func.body_source)
+                body = func.body_source if include_comments else strip_comments(func.body_source)
+                sim = await embedder.similarity(name_expanded, body)
                 log.debug(
                     "C001 %s::%s  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",
                     cf.path,
                     func.qualified_name,
                     name_expanded,
-                    func.body_source[:120],
+                    body[:120],
                     sim,
                     threshold,
                     "FAIL" if sim < threshold else "PASS",

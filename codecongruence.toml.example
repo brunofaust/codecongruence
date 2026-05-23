@@ -94,6 +94,11 @@ min_body_statement_count = 2
 # fnmatch patterns are NOT supported here — these are exact name strings.
 ignore_names = ["main", "run", "setup", "handle", "process", "execute"]
 
+# Include inline comments when computing the body embedding.
+# Default false: a comment like "# send invoice email" next to unrelated code
+# would inflate name-vs-body similarity and mask real drift.
+include_comments = false
+
 # Per-rule file excludes (stacked on top of the global exclude list).
 # exclude = ["legacy/**", "generated/**"]
 
@@ -126,6 +131,12 @@ min_body_statement_count = 2
 # Skip parameters shorter than this many characters.
 # Single-letter iterator variables (i, x, k) are excluded by default.
 min_param_name_chars = 2
+
+# Include inline comments when building the usage-context embedding.
+# Default true: comments that reference a parameter (e.g. "# validate user_id")
+# are valid usage signal and should count.  Set to false to restrict the check
+# to executable lines only.
+include_comments = true
 
 # exclude = ["scripts/**"]
 # exclude_functions = ["*_handler"]

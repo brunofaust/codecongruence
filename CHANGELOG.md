@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Rule C001 (`name_vs_body`) and C002 (`param_name_vs_usage`): added
+    `include_comments` config option (default `False` for C001, `True` for C002).
+    C001 strips `#` and `//` inline comments from function body before embedding
+    to prevent stray comments from inflating name-vs-body similarity. C002 keeps
+    comments in usage context by default because comments like "# validate
+    user_id" are valid semantic signal about what the parameter represents.
+    Extracted shared `strip_comments()` and `INLINE_COMMENT_RE` from D001 to
+    `rules/base.py` for reuse across rules.
+
 - Rule D001 (`docstring_vs_body`): added `include_comments` config option
     (default `False`) that strips `#` and `//` inline comments from function
     body before embedding. Prevents comment text from inflating similarity
