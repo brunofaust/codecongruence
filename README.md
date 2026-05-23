@@ -40,10 +40,17 @@ pre-commit install   # or: prek install
 # 3. drop a default config into your repo
 uvx --from git+https://github.com/brunofaust/codecongruence codecongruence init
 
-# 4. ad-hoc check on staged changes
+# 4a. check only staged changes (default — runs automatically on git commit)
 git add .
 pre-commit run codecongruence   # or: prek run codecongruence
+
+# 4b. scan the whole repo right now, no staging needed
+uvx --from git+https://github.com/brunofaust/codecongruence codecongruence --all
 ```
+
+> **Default mode checks only staged files.** If nothing is staged (`git add`),
+> the tool prints a warning and exits cleanly — it does not scan the whole repo.
+> Use `--all` for ad-hoc whole-repo scans.
 
 ## The six MVP rules
 
@@ -60,7 +67,9 @@ Each rule has a stable short **code** (`C00x` = code-identifier drift,
 | **D005** | `changelog_exists`       | `src/` changed but `## [Unreleased]` got no new bullet                | structural        |
 
 All rules are **diff-aware** by default — they only check things that touch the
-current staged diff. Pass `--all` to scan the whole repo.
+current staged diff (`git add` first). Pass `--all` to scan the whole repo
+without staging anything. If nothing is staged and `--all` is not given, the
+tool exits with a warning rather than silently succeeding.
 
 ## Documentation
 
@@ -76,13 +85,21 @@ current staged diff. Pass `--all` to scan the whole repo.
 ## CLI
 
 ```bash
-codecongruence                          # run all enabled rules on staged changes
-codecongruence --rule docstring_vs_body
+# --- scope ---
+codecongruence                          # staged files only (default; nothing staged = warning)
+codecongruence --all                    # full-repo scan — no staging needed
+codecongruence --include-unstaged       # staged + unstaged working-tree changes
+
+# --- filters ---
+codecongruence --rule docstring_vs_body # single rule
 codecongruence --config custom.toml     # any TOML — codecongruence.toml or pyproject.toml
 codecongruence -c pyproject.toml        # explicit pyproject.toml
-codecongruence --all                    # full-repo scan
+
+# --- output ---
 codecongruence --format json            # machine-readable, for CI
-codecongruence --verbose                # show similarities even on success
+codecongruence --verbose                # show violation table and OK line on success
+
+# --- setup ---
 codecongruence init                     # write a default codecongruence.toml
 codecongruence --version
 ```
