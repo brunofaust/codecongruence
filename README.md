@@ -103,6 +103,7 @@ codecongruence --verbose                # show violation table and OK line on su
 
 # --- setup ---
 codecongruence init                     # write a default codecongruence.toml
+codecongruence --purge-models           # delete ~/.cache/codecongruence and exit
 codecongruence --version
 ```
 

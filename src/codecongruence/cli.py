@@ -94,6 +94,19 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit
 
 
+def _purge_models_callback(value: bool) -> None:
+    if value:
+        import shutil  # noqa: PLC0415
+
+        cache = Path.home() / ".cache" / "codecongruence"
+        if cache.exists():
+            shutil.rmtree(cache)
+            typer.echo(f"removed {cache}")
+        else:
+            typer.echo(f"nothing to remove ({cache} does not exist)")
+        raise typer.Exit
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
@@ -137,6 +150,15 @@ def main(
         typer.Option(
             "--debug",
             help="Emit per-check similarity scores and pass/fail to stderr.",
+        ),
+    ] = False,
+    _purge_models: Annotated[
+        bool,
+        typer.Option(
+            "--purge-models",
+            callback=_purge_models_callback,
+            is_eager=True,
+            help="Delete the model cache (~/.cache/codecongruence) and exit.",
         ),
     ] = False,
     _version: Annotated[

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `--purge-models` flag added to the CLI: removes `~/.cache/codecongruence` and
+    exits. Useful after switching models or freeing disk space.
+
 - `codecongruence.toml.example` added — a fully commented reference config
     covering every global and per-rule option with examples, calibration tips,
     and CI guidance. Serves as the canonical documentation for configuration.
