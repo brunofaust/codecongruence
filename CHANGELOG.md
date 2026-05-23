@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `--purge-models` flag added to the CLI: removes `~/.cache/codecongruence` and
+    exits. Useful after switching models or freeing disk space.
+
+- `codecongruence.toml.example` added — a fully commented reference config
+    covering every global and per-rule option with examples, calibration tips,
+    and CI guidance. Serves as the canonical documentation for configuration.
+
+- Rule D005 renamed from `changelog_exists` to `docs_on_change`; redesigned as
+    a two-stage check (structural: at least one doc file changed; semantic: doc
+    diff must align with code diff). Configurable `docs_files` and
+    `trigger_paths` replace the old `changelog_path` / `unreleased_header`.
+
+- Complete Google-style `Args:` coverage across all `src/` functions — every
+    parameter now appears in its function's formal Args section, satisfying both
+    D006 (word-boundary mention) and ruff D417 (pydoclint Args completeness).
+
+- `pyproject.toml` ruff config: added `PLR0912` ignore for `parsers/python.py`
+    (match statement in param extraction has many branches by necessity).
+
+- `[rules.params_in_docstring]` in `codecongruence.toml`: added
+    `exclude = ["tests/**"]` (pytest fixtures are injected, not user params) and
+    `exclude_functions = ["main"]` (Typer CLI params are self-documenting).
+
+- `TextReporter` now warns when no staged files are found instead of exiting
+    silently, making the "nothing to check" state obvious to users.
+
+- Text reporter: violation table always shown (not just in --verbose); summary
+    line no longer lists rule names.
+
+- `init` now passes the git-discovered repo root to `default_config_path`,
+    fixing incorrect config paths when invoked from a subdirectory.
+
+- Enhance embedder with async similarity and add model cache directory support.
+
+### Fixed
+
+- CLI now uses Click's default error handling (`standalone_mode=True`). User
+    errors like typos in subcommand names now produce clean error messages with
+    suggestions (e.g. "Did you mean 'init'?") instead of raw Python tracebacks.
+
 ### Added
 
 - `prek.toml` with a busydone-style lint chain at the repo root: ruff,

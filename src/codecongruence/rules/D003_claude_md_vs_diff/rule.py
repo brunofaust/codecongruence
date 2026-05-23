@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from codecongruence.core.git import ChangedFile, git_diff
 from codecongruence.rules.base import RuleViolation
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -34,6 +37,11 @@ class ClaudeMdVsDiffRule:
     ) -> Sequence[RuleViolation]:
         """Check that code and docs diffs are semantically aligned.
 
+        Args:
+            changed_files: Files to check (staged or all).
+            embedder: Shared embedder for semantic similarity.
+            config: Per-rule configuration (threshold, excludes, extras).
+
         Returns:
             Sequence of :class:`RuleViolation`; at most one per run.
         """
@@ -53,7 +61,15 @@ class ClaudeMdVsDiffRule:
         if not code_diff_text or not doc_diff_text:
             return []
 
-        sim = embedder.similarity(code_diff_text, doc_diff_text)
+        sim = await embedder.similarity(code_diff_text, doc_diff_text)
+        log.debug(
+            "D003 code_diff_len=%d  doc_diff_len=%d  sim=%.3f  threshold=%.3f  %s",
+            len(code_diff_text),
+            len(doc_diff_text),
+            sim,
+            threshold,
+            "FAIL" if sim < threshold else "PASS",
+        )
         if sim >= threshold:
             return []
 

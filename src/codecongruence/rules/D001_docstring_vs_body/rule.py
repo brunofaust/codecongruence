@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
 from codecongruence.rules.base import RuleViolation
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -34,11 +37,16 @@ class DocstringVsBodyRule:
     ) -> Sequence[RuleViolation]:
         """Check each function whose docstring diverges from its body.
 
+        Args:
+            changed_files: Files to check (staged or all).
+            embedder: Shared embedder for semantic similarity.
+            config: Per-rule configuration (threshold, excludes, extras).
+
         Returns:
             Sequence of :class:`RuleViolation` for each drifted docstring.
         """
         threshold = self.default_threshold if config.threshold is None else config.threshold
-        min_stmts = int(getattr(config, "body_statements_threshold", 3) or 3)
+        min_stmts = int(getattr(config, "min_body_statement_count", 3) or 3)
         min_doc = int(getattr(config, "min_docstring_chars", 10) or 10)
 
         violations: list[RuleViolation] = []
@@ -53,15 +61,37 @@ class DocstringVsBodyRule:
 
             for func in cf.iter_functions(parser, source):
                 if not func.docstring or len(func.docstring) < min_doc:
+                    log.debug("D001 SKIP no_docstring %s::%s", cf.path, func.qualified_name)
                     continue
                 if func.body_statements < min_stmts:
+                    log.debug(
+                        "D001 SKIP short_body %s::%s  stmts=%d  min=%d",
+                        cf.path,
+                        func.qualified_name,
+                        func.body_statements,
+                        min_stmts,
+                    )
                     continue
                 if is_overload_decorated(func.decorators) or is_dataclass_init(func):
+                    log.debug(
+                        "D001 SKIP overload_or_dataclass %s::%s", cf.path, func.qualified_name
+                    )
                     continue
                 if cf.added_ranges and not cf.overlaps(func.line_start, func.line_end):
+                    log.debug("D001 SKIP not_in_diff %s::%s", cf.path, func.qualified_name)
                     continue
 
-                sim = embedder.similarity(func.docstring, func.body_source)
+                sim = await embedder.similarity(func.docstring, func.body_source)
+                log.debug(
+                    "D001 %s::%s  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",
+                    cf.path,
+                    func.qualified_name,
+                    func.docstring[:120],
+                    func.body_source[:120],
+                    sim,
+                    threshold,
+                    "FAIL" if sim < threshold else "PASS",
+                )
                 if sim < threshold:
                     violations.append(
                         RuleViolation(

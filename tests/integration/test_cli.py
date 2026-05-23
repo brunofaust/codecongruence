@@ -38,7 +38,8 @@ def test_version_prints_and_exits_zero(runner: CliRunner) -> None:
     assert "codecongruence" in result.stdout
 
 
-def test_help_lists_init_subcommand(runner: CliRunner) -> None:
+def test_help_lists_init_subcommand(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "init" in result.stdout
@@ -87,7 +88,7 @@ enabled = false
 enabled = false
 [rules.stale_comments]
 enabled = false
-[rules.changelog_exists]
+[rules.docs_on_change]
 enabled = true
         """.strip()
     )
@@ -103,4 +104,4 @@ enabled = true
     payload = json.loads(result.stdout)
     assert payload["ok"] is True
     assert payload["violations"] == []
-    assert "changelog_exists" in payload["rules_run"]
+    assert "docs_on_change" in payload["rules_run"]

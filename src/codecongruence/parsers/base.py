@@ -37,6 +37,10 @@ class FunctionInfo:
     parent_is_dataclass: bool
     body_statements: int
     parameters: tuple[str, ...]  # plain names; variadic prefixed with * or **
+    parameter_details: tuple[tuple[str, str, str], ...] = ()
+    # Each entry: (clean_name, annotation_text, default_text).
+    # annotation_text / default_text are "" when absent.
+    # clean_name has no * prefix; matches param.lstrip("*") in rules.
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,11 +60,21 @@ class LanguageParser(Protocol):
     """
 
     def iter_functions(self, source: str, path: Path) -> Iterator[FunctionInfo]:
-        """Yield FunctionInfo for each function/method in source."""
+        """Yield FunctionInfo for each function/method in source.
+
+        Args:
+            source: Full source text of the file.
+            path: File path (used for qualified names and caching).
+        """
         ...
 
     def iter_comments(self, source: str, *, context_lines: int = 5) -> Iterator[CommentBlock]:
-        """Yield CommentBlock for each meaningful inline comment."""
+        """Yield CommentBlock for each meaningful inline comment.
+
+        Args:
+            source: Full source text of the file.
+            context_lines: Lines of following code to capture per comment block.
+        """
         ...
 
 
@@ -75,6 +89,9 @@ def is_overload_decorated(decorators: tuple[str, ...]) -> bool:
 
 def is_dataclass_init(func: FunctionInfo) -> bool:
     """True for ``__init__`` of a dataclass — auto-generated, nothing to check.
+
+    Args:
+        func: The function info to test.
 
     Returns:
         ``True`` when the function is ``__init__`` on a dataclass.

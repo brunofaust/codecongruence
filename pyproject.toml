@@ -97,6 +97,7 @@ lint.per-file-ignores."src/codecongruence/parsers/javascript.py" = [
   "PLR6301", # iter_comments satisfies LanguageParser Protocol — cannot be static
 ]
 lint.per-file-ignores."src/codecongruence/parsers/python.py" = [
+  "PLR0912", # match statement in param extraction legitimately has many branches
   "PLR6301", # iter_comments satisfies LanguageParser Protocol — cannot be static
 ]
 lint.per-file-ignores."tests/**" = [

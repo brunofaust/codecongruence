@@ -1,0 +1,311 @@
+# codecongruence.toml.example
+#
+# Copy this file to codecongruence.toml (or paste the sections you want into
+# pyproject.toml under [tool.codecongruence] / [tool.codecongruence.rules.*]).
+#
+# Run `codecongruence init` to write a minimal version automatically.
+#
+# Resolution order (highest priority wins):
+#   1. --config FILE  (explicit path, auto-detects layout)
+#   2. pyproject.toml with a [tool.codecongruence] section
+#   3. codecongruence.toml at the repo root
+#   4. Built-in defaults
+#
+# Thresholds: cosine similarity in [0, 1].  A value of 0.0 means "always pass";
+# 1.0 means "must be identical".  Start with the defaults and tighten when you
+# see false-negatives.  Loosen (or disable) when you see too many false-positives.
+# The --debug flag logs every (left, right, sim, threshold) tuple so you can
+# calibrate without guessing.
+
+# ==============================================================================
+# Global settings
+# ==============================================================================
+
+[codecongruence]
+
+# Sentence-embedding model used by all semantic rules.
+# Must be available in fastembed's ONNX model list (no PyTorch, fully offline
+# after the first download).
+#
+# Supported models:
+#   "BAAI/bge-small-en-v1.5"                  ~130 MB  MTEB 62.2  (default)
+#   "sentence-transformers/all-MiniLM-L6-v2"   ~90 MB  MTEB 56.1  (lightest)
+#   "sentence-transformers/all-MiniLM-L12-v2" ~120 MB  MTEB 58.7  (mid)
+#
+model = "BAAI/bge-small-en-v1.5"
+
+# Run all rules concurrently via asyncio.TaskGroup.
+# Set to false to run them one at a time — useful for debugging a specific rule.
+#
+parallel = true
+
+# Maximum number of ONNX intra-op threads.  null = use all available CPU cores.
+# Set to 1-2 in resource-constrained CI environments to avoid OOM.
+#
+# threads = null
+
+# Global file / folder globs applied to EVERY rule.
+# Supports standard fnmatch wildcards.  Per-rule exclude lists are ADDED on top
+# of these.
+#
+# Examples:
+#   exclude = ["tests/**", "docs/**", "**/*.pyi", "migrations/**"]
+#
+# exclude = []
+
+# Global function excludes — fnmatch applied to the qualified function name
+# (e.g. "ClassName.method_name").  Per-rule exclude_functions are ADDED on top.
+#
+# Skip broad dispatcher functions whose body is intentionally unrelated to name:
+#   exclude_functions = ["main", "run", "setup", "handle", "dispatch"]
+#
+# Skip all methods of a legacy class:
+#   exclude_functions = ["LegacyAdapter.*"]
+#
+# exclude_functions = []
+
+# ==============================================================================
+# Rule: C001 — name_vs_body
+#
+# Catches functions whose name implies one thing but whose body does another.
+# Examples: get_user() that deletes rows, validate_email() that sends email.
+#
+# How it works: expands the function name (split_identifier + abbreviation
+# dictionary) and embeds it against the function body.  Low cosine similarity
+# means the name and body are talking about different things.
+# ==============================================================================
+
+[rules.name_vs_body]
+
+# Enable / disable this rule entirely.
+enabled = true
+
+# Cosine-similarity threshold.  Below this → violation.
+# null = use the rule's built-in default (0.25).
+# Raise to 0.35 if you want stricter name alignment.
+# Lower to 0.15 if you get too many false positives on short functions.
+threshold = 0.25
+
+# Minimum number of statements in the function body before the rule fires.
+# Single-line wrappers and pass-through functions are too short to judge.
+min_body_statement_count = 2
+
+# Function names so generic that their body can do literally anything.
+# fnmatch patterns are NOT supported here — these are exact name strings.
+ignore_names = ["main", "run", "setup", "handle", "process", "execute"]
+
+# Per-rule file excludes (stacked on top of the global exclude list).
+# exclude = ["legacy/**", "generated/**"]
+
+# Per-rule function excludes (stacked on top of global exclude_functions).
+# exclude_functions = ["LegacyRouter.*"]
+
+# ==============================================================================
+# Rule: C002 — param_name_vs_usage
+#
+# Catches parameters whose name clashes with how they are actually used in the
+# body.  Example: save_document(user_data) where the body only touches billing
+# records and never the passed-in user_data.
+#
+# How it works: for each parameter, collects the lines of the body that reference
+# it, strips the parameter name from those lines, and embeds the name (+ type
+# annotation + default) against the remaining usage context.
+# ==============================================================================
+
+[rules.param_name_vs_usage]
+
+enabled = true
+
+# Built-in default is 0.20 — lower than name_vs_body because parameter names
+# are shorter tokens with more noise.
+threshold = 0.20
+
+# Skip functions with fewer than this many statements.
+min_body_statement_count = 2
+
+# Skip parameters shorter than this many characters.
+# Single-letter iterator variables (i, x, k) are excluded by default.
+min_param_name_chars = 2
+
+# exclude = ["scripts/**"]
+# exclude_functions = ["*_handler"]
+
+# ==============================================================================
+# Rule: D001 — docstring_vs_body
+#
+# Catches docstrings that describe one thing while the function body does
+# another.  Typical culprit: copy-pasted docstrings, or a function that was
+# refactored but whose docstring was not.
+#
+# How it works: embeds the docstring text (stripped of Args/Returns/Raises
+# sections) against the function body (stripped of the docstring itself).
+# ==============================================================================
+
+[rules.docstring_vs_body]
+
+enabled = true
+
+# 0.30 is the default.  Docstrings tend to be more verbose than names, so the
+# natural similarity is higher — meaning you can afford a tighter threshold here
+# than for name_vs_body.
+threshold = 0.30
+
+# Skip functions whose body has fewer than this many AST statements.
+# Very short functions (property getters, one-liner wrappers) rarely have
+# meaningful docstrings to compare.
+min_body_statement_count = 3
+
+# Skip docstrings shorter than this many characters.
+# One-word docstrings ("Deprecated.", "TODO.") give useless embeddings.
+min_docstring_chars = 10
+
+# Typical excludes: tests (docstrings are informal), generated code, stubs.
+exclude = ["tests/**", "**/__init__.py"]
+
+# exclude_functions = ["BaseModel.*"]
+
+# ==============================================================================
+# Rule: D002 — stale_comments
+#
+# Catches inline comments that no longer match the code below them.  Classic
+# symptom of a refactor that changed the code but left the comment behind.
+#
+# How it works: for each inline comment, captures the next `context_lines`
+# non-blank, non-comment lines and embeds them against the comment text.
+# Only comments inside the staged diff window are checked (diff-aware).
+# ==============================================================================
+
+[rules.stale_comments]
+
+enabled = true
+
+# 0.20 is the default.  Comments are often terse and use different vocabulary
+# than the code they describe, so a low threshold is appropriate.
+threshold = 0.20
+
+# How many following lines of code to capture per comment as the "what the code
+# actually does" context.  Increase for comments that describe longer blocks.
+context_lines = 5
+
+# exclude = ["docs/**", "**/*.pyi"]
+
+# ==============================================================================
+# Rule: D003 — claude_md_vs_diff
+#
+# Guards against "doc-bypass" commits: a large code change coupled with a tiny,
+# unrelated CLAUDE.md tweak.  If both code and docs changed, they should be
+# talking about the same feature.
+#
+# How it works: collects the staged diff of code_paths files and the staged diff
+# of docs_files, then computes their cosine similarity.  Only fires when BOTH
+# sides have staged changes — a code-only commit is allowed.
+# ==============================================================================
+
+[rules.claude_md_vs_diff]
+
+enabled = true
+
+# 0.20 is the default.  The code diff and doc diff use different vocabularies
+# (code tokens vs prose), so expect naturally lower similarity.
+threshold = 0.20
+
+# Globs that define "code files".  Only staged changes to matching files
+# are included in the code diff.
+code_paths = ["src/**"]
+
+# The documentation file(s) to compare against the code diff.
+# The rule only fires when at least one of these files also has staged changes.
+# Rename / add entries to point at your project's equivalent of CLAUDE.md.
+docs_files = ["CLAUDE.md"]
+
+# ==============================================================================
+# Rule: D004 — pr_description_vs_diff
+#
+# Catches lazy "fix bug" PR descriptions on 500-line diffs.
+# CI-only: reads the PR body from the CODECONGRUENCE_PR_BODY environment
+# variable.  Disabled by default — opt in when you have a CI job that exports
+# the PR body.
+#
+# How it works: embeds the full PR description against the full staged unified
+# diff.  Only runs when CODECONGRUENCE_PR_BODY is set and non-empty.
+# ==============================================================================
+
+[rules.pr_description_vs_diff]
+
+# Off by default — enable in CI, not in local pre-commit.
+enabled = false
+
+# 0.25 is the default.  The description and diff use very different text, so
+# a low threshold is appropriate.
+threshold = 0.25
+
+# To use in CI (e.g. GitHub Actions):
+#
+#   env:
+#     CODECONGRUENCE_PR_BODY: ${{ github.event.pull_request.body }}
+#   run: uv run codecongruence --all
+
+# ==============================================================================
+# Rule: D005 — docs_on_change
+#
+# Ensures that at least one documentation file is updated whenever source code
+# changes.  Two-stage check:
+#   1. Structural — at least one docs_file must have staged changes when any
+#      trigger_paths file is staged.  Fires if none do.
+#   2. Semantic — when threshold > 0, the combined doc diff must be
+#      semantically similar to the combined code diff.  Set threshold = 0.0 to
+#      disable the semantic stage and only enforce the structural check.
+# ==============================================================================
+
+[rules.docs_on_change]
+
+enabled = true
+
+# Cosine-similarity threshold for the semantic stage (stage 2).
+# Set to 0.0 to skip stage 2 entirely — only require that a doc file changed,
+# without checking whether the doc change is related to the code change.
+threshold = 0.20
+
+# File globs that "trigger" this rule.  When any staged file matches, the rule
+# checks that at least one of docs_files was also staged.
+trigger_paths = ["src/**"]
+
+# Documentation files that must be updated when code changes.
+# List every doc that should stay in sync with your source.
+# At least one of these must have staged changes for the check to pass.
+docs_files = ["CHANGELOG.md", "README.md"]
+
+# ==============================================================================
+# Rule: D006 — params_in_docstring
+#
+# Catches functions that have a docstring but omit one or more parameters from
+# it.  Structural rule — no embeddings used.
+#
+# How it works: for each parameter, checks whether the parameter name appears
+# as a whole word (word-boundary regex \b) anywhere in the docstring text,
+# including prose, type hints, or examples.  Google-style `Args:` sections are
+# recognised automatically, but any prose mention also satisfies the check.
+# ==============================================================================
+
+[rules.params_in_docstring]
+
+enabled = true
+
+# No threshold — this is a structural (non-semantic) rule.
+# threshold is ignored and can be omitted.
+
+# Skip *args / **kwargs parameters.  These are rarely documented individually
+# and their names carry little semantic meaning.
+skip_variadic = true
+
+# Skip dunder methods entirely (__init__, __call__, etc.).
+# Document the class-level docstring instead.
+ignore_dunders = true
+
+# Tests use injected pytest fixtures whose names don't appear in docstrings.
+# Generated code and stubs often have placeholder parameter names.
+exclude = ["tests/**", "**/*.pyi"]
+
+# Typer CLI entry-points are self-documenting via Annotated[..., typer.Option()]
+# and don't need an Args section.
+exclude_functions = ["main"]

@@ -1,34 +1,41 @@
-"""Rule: enforce a CHANGELOG ``[Unreleased]`` entry whenever src/ changes."""
+"""Rule: documentation files must be updated when code changes."""
 
 from __future__ import annotations
 
+import logging
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from codecongruence.core.embedder import Embedder  # noqa: TC001  (kept for protocol parity)
 from codecongruence.core.git import ChangedFile, git_diff
 from codecongruence.rules.base import RuleViolation
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from codecongruence.core.config import RuleConfig
+    from codecongruence.core.embedder import Embedder
 
-__all__ = ["ChangelogExistsRule"]
+__all__ = ["DocsOnChangeRule"]
 
 
-class ChangelogExistsRule:
-    """Pure structural check — no embeddings needed.
+class DocsOnChangeRule:
+    """Ensure documentation files are updated whenever code changes.
 
-    Fail if code changed under ``trigger_paths`` AND no new ``- `` bullet was
-    added under the ``[Unreleased]`` header in CHANGELOG.md.
+    Two-stage check:
+    1. Structural — at least one file from ``docs_files`` must have staged
+       changes when any ``trigger_paths`` file is staged.
+    2. Semantic — when ``threshold > 0``, the combined doc diff must be
+       semantically similar to the combined code diff (same idea, different
+       words is fine; completely unrelated is not).
     """
 
-    rule_id: str = "changelog_exists"
+    rule_id: str = "docs_on_change"
     code: str = "D005"
-    description: str = "Code changes should be recorded under CHANGELOG `[Unreleased]`."
-    default_threshold: float = 0.0  # not embedding-based
+    description: str = "Documentation files should be updated when code changes."
+    default_threshold: float = 0.20
 
     async def check(
         self,
@@ -36,79 +43,98 @@ class ChangelogExistsRule:
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
-        """Check that a CHANGELOG ``[Unreleased]`` bullet exists when src/ changes.
+        """Check that at least one doc file was updated alongside code changes.
+
+        Args:
+            changed_files: Files to check (staged or all).
+            embedder: Shared embedder for semantic similarity.
+            config: Per-rule configuration (threshold, trigger_paths, docs_files).
 
         Returns:
             Sequence of :class:`RuleViolation`; at most one per run.
         """
         triggers: list[str] = list(getattr(config, "trigger_paths", ["src/**"]) or ["src/**"])
-        changelog_path = Path(getattr(config, "changelog_path", "CHANGELOG.md") or "CHANGELOG.md")
-        unreleased = str(getattr(config, "unreleased_header", "## [Unreleased]"))
+        docs_files: list[Path] = [
+            Path(f) for f in (getattr(config, "docs_files", ["CHANGELOG.md"]) or ["CHANGELOG.md"])
+        ]
+        threshold = self.default_threshold if config.threshold is None else config.threshold
 
-        triggered = any(any(fnmatch(str(cf.path), g) for g in triggers) for cf in changed_files)
-        if not triggered:
+        # Step 1: Any trigger_paths file in the staged set?
+        code_files = [cf for cf in changed_files if any(fnmatch(str(cf.path), g) for g in triggers)]
+        if not code_files:
+            log.debug("D005 SKIP not_triggered  trigger_paths=%s", triggers)
             return []
 
-        if not changelog_path.exists():  # noqa: ASYNC240 — cheap stat call, not worth aiofiles
+        # Get code diff — if empty we are likely in --all mode with nothing staged.
+        code_diff = "\n".join([await git_diff(cf.path) for cf in code_files]).strip()
+        if not code_diff:
+            log.debug("D005 SKIP no_staged_code_diff  (--all mode or nothing staged)")
+            return []
+
+        # Step 2: Which of the docs_files have staged changes?
+        changed_doc_diffs: list[str] = []
+        for doc_path in docs_files:
+            diff = await git_diff(doc_path, context=200)
+            if diff.strip():
+                changed_doc_diffs.append(diff)
+
+        changed_count = len(changed_doc_diffs)
+        log.debug(
+            "D005 code_diff_len=%d  docs_changed=%d/%d  docs=%s",
+            len(code_diff),
+            changed_count,
+            len(docs_files),
+            [str(f) for f in docs_files],
+        )
+
+        if not changed_doc_diffs:
             return [
                 RuleViolation(
                     rule_id=self.rule_id,
                     code=self.code,
-                    file_path=str(changelog_path),
+                    file_path=str(docs_files[0]),
                     line=None,
                     message=(
-                        f"Code changed under {triggers} but {changelog_path} is missing. "
-                        f"Add the file with an `{unreleased}` section and document this change."
+                        f"Code changed under {triggers} but none of "
+                        f"{[str(f) for f in docs_files]} were updated. "
+                        "Document the change."
                     ),
                     similarity=0.0,
-                    threshold=0.0,
+                    threshold=threshold,
                 )
             ]
 
-        diff = await git_diff(changelog_path)
-        added_under_unreleased = _has_added_bullet_under_header(diff, unreleased)
-        if added_under_unreleased:
+        # Step 3: Optional semantic similarity check.
+        if threshold <= 0.0:
+            log.debug("D005 PASS docs_updated (similarity check disabled)")
             return []
 
-        return [
-            RuleViolation(
-                rule_id=self.rule_id,
-                code=self.code,
-                file_path=str(changelog_path),
-                line=None,
-                message=(
-                    f"Code changed under {triggers} but no new bullet under "
-                    f"`{unreleased}` in {changelog_path}. Document the change."
-                ),
-                similarity=0.0,
-                threshold=0.0,
-            )
-        ]
+        combined_doc_diff = "\n".join(changed_doc_diffs)
+        sim = await embedder.similarity(code_diff, combined_doc_diff)
+        log.debug(
+            "D005 left=code_diff(%d chars)  right=doc_diff(%d chars)  sim=%.3f  threshold=%.3f  %s",
+            len(code_diff),
+            len(combined_doc_diff),
+            sim,
+            threshold,
+            "FAIL" if sim < threshold else "PASS",
+        )
 
+        if sim < threshold:
+            return [
+                RuleViolation(
+                    rule_id=self.rule_id,
+                    code=self.code,
+                    file_path=str(docs_files[0]),
+                    line=None,
+                    message=(
+                        f"Docs updated but not aligned with the code diff "
+                        f"(similarity {sim:.2f} < {threshold:.2f}). "
+                        "Make sure your docs describe what actually changed."
+                    ),
+                    similarity=sim,
+                    threshold=threshold,
+                )
+            ]
 
-def _has_added_bullet_under_header(diff: str, header: str) -> bool:
-    """True if the diff adds at least one ``- `` bullet under ``header``.
-
-    Walks the unified diff; tracks whether the current hunk has passed the
-    ``[Unreleased]`` header on either the old or new side.
-
-    Returns:
-        ``True`` when the diff contains a new bullet item under ``header``.
-    """
-    in_unreleased = False
-    for raw in diff.splitlines():
-        if raw.startswith("@@"):
-            in_unreleased = False
-            continue
-        stripped = raw[1:] if raw[:1] in {"+", "-", " "} else raw
-        if stripped.lstrip().startswith(header):
-            in_unreleased = True
-            continue
-        if stripped.lstrip().startswith("## ") and not stripped.lstrip().startswith(header):
-            in_unreleased = False
-            continue
-        if in_unreleased and raw.startswith("+") and not raw.startswith("+++"):
-            content = raw[1:].lstrip()
-            if content.startswith(("- ", "* ")):
-                return True
-    return False
+        return []

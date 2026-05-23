@@ -18,12 +18,21 @@ _REGISTRY: dict[str, LanguageParser] = {
 
 
 def register_parser(ext: str, parser: LanguageParser) -> None:
-    """Register a parser for a file extension (e.g. ``.js``)."""
+    """Register a parser for a file extension (e.g. ``.js``).
+
+    Args:
+        ext: Dotted file extension (e.g. ``".js"``, ``".ts"``).
+        parser: Parser instance satisfying :class:`~codecongruence.parsers.base.LanguageParser`.
+    """
     _REGISTRY[ext] = parser
 
 
 def get_parser(ext: str) -> LanguageParser | None:
-    """Return the parser for this extension, or ``None`` if unsupported."""
+    """Return the parser for this extension, or ``None`` if unsupported.
+
+    Args:
+        ext: Dotted file extension (e.g. ``".py"``, ``".ts"``).
+    """
     return _REGISTRY.get(ext)
 
 

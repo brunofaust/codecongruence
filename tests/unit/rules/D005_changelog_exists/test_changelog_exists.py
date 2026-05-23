@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from codecongruence.core.config import RuleConfig
 from codecongruence.core.git import ChangedFile
-from codecongruence.rules.D005_changelog_exists import ChangelogExistsRule
+from codecongruence.rules.D005_changelog_exists import DocsOnChangeRule
 
 if TYPE_CHECKING:
     from codecongruence.core.embedder import Embedder
@@ -25,19 +25,18 @@ def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, check=True, env=env, capture_output=True)
 
 
-def _check_in_repo(repo: Path, changed: list[ChangedFile], fake: Embedder, *, changelog: bool):
+def _check_in_repo(repo: Path, changed: list[ChangedFile], fake: Embedder) -> list:
     cfg = RuleConfig(
         threshold=0.0,
         **{
             "trigger_paths": ["src/**"],
-            "changelog_path": "CHANGELOG.md",
-            "unreleased_header": "## [Unreleased]",
+            "docs_files": ["CHANGELOG.md"],
         },
     )
     cwd = os.getcwd()
     os.chdir(repo)
     try:
-        return asyncio.run(ChangelogExistsRule().check(changed, fake, cfg))
+        return asyncio.run(DocsOnChangeRule().check(changed, fake, cfg))
     finally:
         os.chdir(cwd)
 
@@ -47,12 +46,11 @@ def test_no_trigger_no_violation(repo: Path, fake_embedder: Embedder) -> None:
         repo,
         [ChangedFile(path=Path("docs/x.md"), added_ranges=())],
         fake_embedder,
-        changelog=False,
     )
     assert out == []
 
 
-def test_missing_changelog_fails(repo: Path, fake_embedder: Embedder) -> None:
+def test_missing_doc_update_fails(repo: Path, fake_embedder: Embedder) -> None:
     src = repo / "src"
     src.mkdir()
     (src / "a.py").write_text("x = 1\n")
@@ -62,13 +60,13 @@ def test_missing_changelog_fails(repo: Path, fake_embedder: Embedder) -> None:
         repo,
         [ChangedFile(path=Path("src/a.py"), added_ranges=())],
         fake_embedder,
-        changelog=False,
     )
     assert len(out) == 1
-    assert out[0].rule_id == "changelog_exists"
+    assert out[0].rule_id == "docs_on_change"
+    assert out[0].code == "D005"
 
 
-def test_passes_with_new_bullet_under_unreleased(repo: Path, fake_embedder: Embedder) -> None:
+def test_passes_when_doc_changed(repo: Path, fake_embedder: Embedder) -> None:
     src = repo / "src"
     src.mkdir()
     (src / "a.py").write_text("x = 1\n")
@@ -77,9 +75,9 @@ def test_passes_with_new_bullet_under_unreleased(repo: Path, fake_embedder: Embe
     _git(repo, "add", ".")
     _git(repo, "commit", "-q", "-m", "seed")
 
-    # modify code AND add a bullet under [Unreleased]
+    # modify code AND update the changelog
     (src / "a.py").write_text("x = 2\n")
-    cl.write_text("# Changelog\n\n## [Unreleased]\n- Tweaked a.py\n")
+    cl.write_text("# Changelog\n\n## [Unreleased]\n- Updated a.py\n")
     _git(repo, "add", ".")
 
     out = _check_in_repo(
@@ -89,6 +87,45 @@ def test_passes_with_new_bullet_under_unreleased(repo: Path, fake_embedder: Embe
             ChangedFile(path=Path("CHANGELOG.md"), added_ranges=()),
         ],
         fake_embedder,
-        changelog=True,
     )
+    assert out == []
+
+
+def test_any_doc_file_satisfies_check(repo: Path, fake_embedder: Embedder) -> None:
+    """Updating any file from docs_files is sufficient."""
+    src = repo / "src"
+    src.mkdir()
+    (src / "b.py").write_text("y = 1\n")
+    readme = repo / "README.md"
+    readme.write_text("# Project\n\nInitial.\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "seed")
+
+    (src / "b.py").write_text("y = 2\n")
+    readme.write_text("# Project\n\nUpdated.\n")
+    _git(repo, "add", ".")
+
+    cfg = RuleConfig(
+        threshold=0.0,
+        **{
+            "trigger_paths": ["src/**"],
+            "docs_files": ["CHANGELOG.md", "README.md"],
+        },
+    )
+    cwd = os.getcwd()
+    os.chdir(repo)
+    try:
+        out = asyncio.run(
+            DocsOnChangeRule().check(
+                [
+                    ChangedFile(path=Path("src/b.py"), added_ranges=()),
+                    ChangedFile(path=Path("README.md"), added_ranges=()),
+                ],
+                fake_embedder,
+                cfg,
+            )
+        )
+    finally:
+        os.chdir(cwd)
+
     assert out == []

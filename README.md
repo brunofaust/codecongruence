@@ -8,7 +8,8 @@ surrounding artifacts: docstrings, comments, function names, CLAUDE.md, PR
 descriptions, and CHANGELOG entries.
 
 It runs entirely offline (no API calls), uses an ONNX-based embedding model
-(no PyTorch), and ships as a regular `pip install` package.
+(no PyTorch), and is installed automatically by your pre-commit tool from this
+repo — no separate `pip install` needed.
 
 **Requirements:** Python ≥ 3.11.
 
@@ -20,41 +21,57 @@ It runs entirely offline (no API calls), uses an ONNX-based embedding model
 ## Quick start
 
 ```bash
-# 1. install
-pip install codecongruence
+# 1. add to .pre-commit-config.yaml
+#   repos:
+#     - repo: https://github.com/brunofaust/codecongruence
+#       rev: v0.1.0
+#       hooks:
+#         - id: codecongruence
 
-# 2. drop a default config into your repo
-codecongruence init
+# or prek.toml:
+#   [[repos]]
+#   repo = "https://github.com/brunofaust/codecongruence"
+#   rev = "v0.1.0"
+#   hooks = [{id = "codecongruence"}]
 
-# 3a. ad-hoc check on staged changes
+# 2. install hooks
+pre-commit install   # or: prek install
+
+# 3. drop a default config into your repo
+uvx --from git+https://github.com/brunofaust/codecongruence codecongruence init
+
+# 4a. check only staged changes (default — runs automatically on git commit)
 git add .
-codecongruence
+pre-commit run codecongruence   # or: prek run codecongruence
 
-# 3b. or wire it into pre-commit
-# add to .pre-commit-config.yaml:
-#   - repo: https://github.com/brunofaust/codecongruence
-#     rev: v0.1.0
-#     hooks:
-#       - id: codecongruence
-pre-commit install
+# 4b. scan the whole repo right now, no staging needed
+uvx --from git+https://github.com/brunofaust/codecongruence codecongruence --all
 ```
 
-## The six MVP rules
+> **Default mode checks only staged files.** If nothing is staged (`git add`),
+> the tool prints a warning and exits cleanly — it does not scan the whole repo.
+> Use `--all` for ad-hoc whole-repo scans.
+
+## Rules
 
 Each rule has a stable short **code** (`C00x` = code-identifier drift,
 `D00x` = documentation / artifact drift) shown in reports and easy to grep.
 
-| Code     | Rule                     | What it catches                                                       | Default threshold |
-| -------- | ------------------------ | --------------------------------------------------------------------- | ----------------- |
-| **C001** | `name_vs_body`           | `get_user()` that deletes, `validate_email()` that sends email        | 0.25              |
-| **D001** | `docstring_vs_body`      | Docstring describes one thing, function body does another             | 0.30              |
-| **D002** | `stale_comments`         | Comment describes behavior the code no longer has                     | 0.20              |
-| **D003** | `claude_md_vs_diff`      | Unrelated one-line CLAUDE.md tweak buried under a 10k-LOC code change | 0.20              |
-| **D004** | `pr_description_vs_diff` | Lazy "fix bug" PR description on a 500-line change (CI-only)          | 0.25              |
-| **D005** | `changelog_exists`       | `src/` changed but `## [Unreleased]` got no new bullet                | structural        |
+| Code     | Rule                     | What it catches                                                              | Default threshold |
+| -------- | ------------------------ | ---------------------------------------------------------------------------- | ----------------- |
+| **C001** | `name_vs_body`           | `get_user()` that deletes, `validate_email()` that sends email               | 0.25              |
+| **C002** | `param_name_vs_usage`    | Parameter name clashes with how the parameter is used in the body            | 0.20              |
+| **D001** | `docstring_vs_body`      | Docstring describes one thing, function body does another                    | 0.30              |
+| **D002** | `stale_comments`         | Comment describes behavior the code no longer has                            | 0.20              |
+| **D003** | `claude_md_vs_diff`      | Unrelated one-line CLAUDE.md tweak buried under a 10k-LOC code change        | 0.20              |
+| **D004** | `pr_description_vs_diff` | Lazy "fix bug" PR description on a 500-line change (CI-only)                 | 0.25              |
+| **D005** | `docs_on_change`         | `src/` changed but none of your docs files (CHANGELOG, README…) were updated | 0.20              |
+| **D006** | `params_in_docstring`    | Function has a docstring but a parameter isn't mentioned in it               | structural        |
 
 All rules are **diff-aware** by default — they only check things that touch the
-current staged diff. Pass `--all` to scan the whole repo.
+current staged diff (`git add` first). Pass `--all` to scan the whole repo
+without staging anything. If nothing is staged and `--all` is not given, the
+tool exits with a warning rather than silently succeeding.
 
 ## Documentation
 
@@ -70,14 +87,23 @@ current staged diff. Pass `--all` to scan the whole repo.
 ## CLI
 
 ```bash
-codecongruence                          # run all enabled rules on staged changes
-codecongruence --rule docstring_vs_body
+# --- scope ---
+codecongruence                          # staged files only (default; nothing staged = warning)
+codecongruence --all                    # full-repo scan — no staging needed
+codecongruence --include-unstaged       # staged + unstaged working-tree changes
+
+# --- filters ---
+codecongruence --rule docstring_vs_body # single rule
 codecongruence --config custom.toml     # any TOML — codecongruence.toml or pyproject.toml
 codecongruence -c pyproject.toml        # explicit pyproject.toml
-codecongruence --all                    # full-repo scan
+
+# --- output ---
 codecongruence --format json            # machine-readable, for CI
-codecongruence --verbose                # show similarities even on success
+codecongruence --verbose                # show violation table and OK line on success
+
+# --- setup ---
 codecongruence init                     # write a default codecongruence.toml
+codecongruence --purge-models           # delete ~/.cache/codecongruence and exit
 codecongruence --version
 ```
 
@@ -86,6 +112,9 @@ codecongruence --version
 Two layouts are supported. Pick whichever fits your project — uv, Poetry,
 Hatch and PDM all expose `pyproject.toml`, so most modern Python repos will
 prefer that.
+
+For a fully annotated reference with every option, calibration tips, and CI
+guidance, see [`codecongruence.toml.example`](codecongruence.toml.example).
 
 ### Option A — `pyproject.toml` (modern, uv/Poetry-friendly)
 
@@ -97,7 +126,7 @@ parallel = true
 [tool.codecongruence.rules.docstring_vs_body]
 enabled = true
 threshold = 0.30
-body_statements_threshold = 3
+min_body_statement_count = 3
 min_docstring_chars = 10
 exclude = ["tests/**", "**/__init__.py"]
 
@@ -121,11 +150,17 @@ enabled = true
 threshold = 0.20
 context_lines = 5
 
-[tool.codecongruence.rules.changelog_exists]
+[tool.codecongruence.rules.docs_on_change]
 enabled = true
-changelog_path = "CHANGELOG.md"
-unreleased_header = "## [Unreleased]"
+threshold = 0.20
 trigger_paths = ["src/**"]
+docs_files = ["CHANGELOG.md", "README.md"]
+
+[tool.codecongruence.rules.params_in_docstring]
+enabled = true
+skip_variadic = true
+ignore_dunders = true
+exclude = ["tests/**"]
 ```
 
 ### Option B — `codecongruence.toml` (stand-alone)
@@ -141,6 +176,7 @@ threshold = 0.30
 exclude = ["tests/**", "**/__init__.py"]
 
 # ... etc; same options, just one nesting level shallower
+# See codecongruence.toml.example for all options.
 ```
 
 ### Resolution order (highest priority wins)
@@ -211,10 +247,9 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for details.
 ```bash
 git clone https://github.com/brunofaust/codecongruence
 cd codecongruence
-uv sync --extra dev
+uv sync
 uv run pytest
-uv run ruff check src tests
-uv run mypy
+uv run prek run --all-files
 ```
 
 PRs welcome. Please make sure `codecongruence` passes on its own diff before

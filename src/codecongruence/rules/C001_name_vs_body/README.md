@@ -12,6 +12,7 @@ another. Classic example: `validate_email()` that quietly sends emails;
 1. Skip generic names (`main`, `run`, `setup`, `handle`, `process`, `execute`)
     and `test_*` functions — they're intentionally vague.
 1. Skip `@overload` and dataclass-`__init__`.
+1. Skip if the body has fewer than `min_body_statement_count` AST statements (default 2).
 1. Skip if the staged diff did not touch the function.
 1. Expand the function name via `split_identifier()` (snake/camel split + a
     small abbreviation dictionary: `db → database`, `cfg → configuration`,
@@ -25,6 +26,7 @@ another. Classic example: `validate_email()` that quietly sends emails;
 [rules.name_vs_body]
 enabled = true
 threshold = 0.25
+min_body_statement_count = 2   # skip trivial bodies (AST statement count)
 ignore_names = ["main", "run", "setup", "handle"]
 ```
 

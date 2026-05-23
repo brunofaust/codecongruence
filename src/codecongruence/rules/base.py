@@ -58,5 +58,11 @@ class Rule(Protocol):
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
-        """Return violations for ``changed_files``. Empty sequence means OK."""
+        """Return violations for ``changed_files``. Empty sequence means OK.
+
+        Args:
+            changed_files: Files to check (staged or all).
+            embedder: Shared embedder instance for semantic similarity.
+            config: Per-rule configuration (threshold, excludes, extras).
+        """
         ...
