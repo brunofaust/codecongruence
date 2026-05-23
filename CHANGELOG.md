@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Rule D001 (`docstring_vs_body`): added `include_comments` config option
+    (default `False`) that strips `#` and `//` inline comments from function
+    body before embedding. Prevents comment text from inflating similarity
+    scores and masking real docstring drift. Updated `cli.py`: renamed
+    `_DEFAULT_TOML` → `DEFAULT_TOML` per style guide (no `_` prefix on
+    module-level exports).
+
 - `--purge-models` flag added to the CLI: removes `~/.cache/codecongruence` and
     exits. Useful after switching models or freeing disk space.
 

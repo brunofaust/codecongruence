@@ -159,6 +159,12 @@ min_body_statement_count = 3
 # One-word docstrings ("Deprecated.", "TODO.") give useless embeddings.
 min_docstring_chars = 10
 
+# Include inline comments (# and //) when computing the body embedding.
+# Default false: comments are stripped before embedding so they cannot inflate
+# similarity and mask real docstring drift.  Set to true only if you want
+# comments to count as part of the "what the code does" signal.
+include_comments = false
+
 # Typical excludes: tests (docstrings are informal), generated code, stubs.
 exclude = ["tests/**", "**/__init__.py"]
 

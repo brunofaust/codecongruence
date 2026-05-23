@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from codecongruence.parsers import get_parser
@@ -19,6 +20,23 @@ if TYPE_CHECKING:
     from codecongruence.core.git import ChangedFile
 
 __all__ = ["DocstringVsBodyRule"]
+
+# Matches inline and full-line comments for Python (#) and JS/TS (//).
+# The (?<!:) lookbehind preserves https:// URLs.
+INLINE_COMMENT_RE = re.compile(r"(?<!:)\s*(?:#|//).*$", re.MULTILINE)
+
+
+def strip_comments(source: str) -> str:
+    """Remove inline and full-line comments, then drop blank lines.
+
+    Args:
+        source: Raw function body source text.
+
+    Returns:
+        Source with ``#`` and ``//`` comments removed and blank lines stripped.
+    """
+    cleaned = INLINE_COMMENT_RE.sub("", source)
+    return "\n".join(line for line in cleaned.splitlines() if line.strip())
 
 
 class DocstringVsBodyRule:
@@ -48,6 +66,7 @@ class DocstringVsBodyRule:
         threshold = self.default_threshold if config.threshold is None else config.threshold
         min_stmts = int(getattr(config, "min_body_statement_count", 3) or 3)
         min_doc = int(getattr(config, "min_docstring_chars", 10) or 10)
+        include_comments = bool(getattr(config, "include_comments", False))
 
         violations: list[RuleViolation] = []
         for cf in changed_files:
@@ -81,13 +100,14 @@ class DocstringVsBodyRule:
                     log.debug("D001 SKIP not_in_diff %s::%s", cf.path, func.qualified_name)
                     continue
 
-                sim = await embedder.similarity(func.docstring, func.body_source)
+                body = func.body_source if include_comments else strip_comments(func.body_source)
+                sim = await embedder.similarity(func.docstring, body)
                 log.debug(
                     "D001 %s::%s  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",
                     cf.path,
                     func.qualified_name,
                     func.docstring[:120],
-                    func.body_source[:120],
+                    body[:120],
                     sim,
                     threshold,
                     "FAIL" if sim < threshold else "PASS",
