@@ -1,11 +1,9 @@
 """Typer CLI entry. Wires config → embedder → runner → reporter."""
 
-from __future__ import annotations
-
 import asyncio
 import sys
 from enum import StrEnum
-from pathlib import Path  # noqa: TC003 — typer reads this at runtime via inspect.signature
+from pathlib import Path
 from typing import Annotated
 
 import typer
