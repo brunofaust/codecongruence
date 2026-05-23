@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `TextReporter` now warns when no staged files are found instead of exiting
+    silently, making the "nothing to check" state obvious to users.
 - `init` now passes the git-discovered repo root to `default_config_path`,
     fixing incorrect config paths when invoked from a subdirectory.
 

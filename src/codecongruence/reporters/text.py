@@ -32,6 +32,13 @@ class TextReporter:
 
     def report(self, result: RunResult) -> None:
         """Render ``result`` to the console."""
+        if not result.files_checked:
+            self.console.print(
+                "[yellow]codecongruence: nothing to check[/yellow] — "
+                "no staged files found. Stage changes first or run with [bold]--all[/bold]."
+            )
+            return
+
         if not result.violations:
             if self.verbose:
                 self.console.print(
