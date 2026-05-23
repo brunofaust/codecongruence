@@ -59,13 +59,20 @@ threshold = 0.25
 enabled = true
 threshold = 0.20
 
-[rules.changelog_exists]
+[rules.docs_on_change]
 enabled = true
+threshold = 0.20
+trigger_paths = ["src/**"]
+docs_files = ["CHANGELOG.md", "README.md"]
 """
 
 
 def _ensure_gitignore_entry(repo_root: Path, entry: str = ".codecongruence") -> bool:
     """Add ``entry`` to ``.gitignore`` if absent.
+
+    Args:
+        repo_root: Root directory containing (or to contain) the ``.gitignore``.
+        entry: The line to add (default: ``".codecongruence"``).
 
     Returns:
         ``True`` if the entry was added, ``False`` if it was already present.
@@ -125,6 +132,13 @@ def main(
         bool,
         typer.Option("--include-unstaged", help="Also check unstaged changes."),
     ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option(
+            "--debug",
+            help="Emit per-check similarity scores and pass/fail to stderr.",
+        ),
+    ] = False,
     _version: Annotated[
         bool,
         typer.Option(
@@ -151,6 +165,7 @@ def main(
             output_format=output_format,
             verbose=verbose,
             include_unstaged=include_unstaged,
+            debug=debug,
         )
     )
     raise typer.Exit(exit_code)
@@ -166,12 +181,27 @@ def init_cmd(
         bool,
         typer.Option("--force", help="Overwrite an existing config."),
     ] = False,
+    no_download: Annotated[
+        bool,
+        typer.Option("--no-download", help="Skip model download (also skips pre-embedding)."),
+    ] = False,
+    no_embed: Annotated[
+        bool,
+        typer.Option("--no-embed", help="Download the model but skip pre-embedding all files."),
+    ] = False,
 ) -> None:
-    """Write a default ``codecongruence.toml`` at the repo root.
+    """Write a default ``codecongruence.toml`` and warm up the embedding model.
+
+    By default this also downloads the embedding model and pre-embeds every
+    tracked file so the first ``git commit`` check is instant. Use
+    ``--no-download`` to skip both, or ``--no-embed`` to download the model
+    without pre-embedding.
 
     Args:
         path: Output path for the config file (default: repo root).
         force: If True, overwrite an existing config.
+        no_download: Skip model download and pre-embedding entirely.
+        no_embed: Download model but skip pre-embedding tracked files.
 
     Raises:
         Exit: With code ``1`` when a config already exists and ``--force`` was not passed.
@@ -185,6 +215,64 @@ def init_cmd(
     if _ensure_gitignore_entry(target.parent):
         typer.echo("added .codecongruence to .gitignore")
 
+    if no_download:
+        return
+
+    asyncio.run(_init_setup(no_embed=no_embed))
+
+
+async def _init_setup(*, no_embed: bool) -> None:
+    from rich.console import Console  # noqa: PLC0415
+    from rich.progress import (  # noqa: PLC0415
+        BarColumn,
+        MofNCompleteColumn,
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+    )
+
+    console = Console()
+
+    repo_root = await current_repo_root()
+    config = load_config(repo_root=repo_root)
+    cache_dir = repo_root / ".codecongruence"
+    model_cache_dir = Path.home() / ".cache" / "codecongruence"
+    embedder = Embedder(
+        model_name=config.model,
+        cache_dir=cache_dir,
+        model_cache_dir=model_cache_dir,
+        threads=config.threads,
+    )
+
+    # Model download may emit fastembed / huggingface_hub tqdm output to stderr.
+    # Print a plain line before so it doesn't interleave with any live display.
+    console.print(f"[dim]downloading model {config.model!r}…[/dim]")
+    await embedder.warm_up()
+    console.print("[green]✓[/green] model ready")
+
+    if no_embed:
+        return
+
+    runner = RuleRunner(config, embedder)
+    changed = await runner.gather_changed(all_files=True)
+    before = len(embedder._cache)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        task = progress.add_task(f"embedding {len(changed)} file(s)", total=len(changed))
+        for cf in changed:
+            await runner.run(pre_gathered=[cf])
+            progress.advance(task)
+
+    added = len(embedder._cache) - before
+    console.print(f"[green]✓[/green] cached {len(embedder._cache)} embedding(s) ({added} new)")
+
 
 async def _run(
     *,
@@ -194,17 +282,42 @@ async def _run(
     output_format: OutputFormat,
     verbose: bool,
     include_unstaged: bool,
+    debug: bool = False,
 ) -> int:
+    if debug:
+        import logging  # noqa: PLC0415
+
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(name)s  %(message)s"))
+        logger = logging.getLogger("codecongruence")
+        logger.setLevel(logging.DEBUG)
+        logger.addHandler(handler)
+
     repo_root = await current_repo_root()
     config = load_config(path=config_path, repo_root=repo_root)
     cache_dir = repo_root / ".codecongruence"
-    embedder = Embedder(model_name=config.model, cache_dir=cache_dir)
+    model_cache_dir = Path.home() / ".cache" / "codecongruence"
+    embedder = Embedder(
+        model_name=config.model,
+        cache_dir=cache_dir,
+        model_cache_dir=model_cache_dir,
+        threads=config.threads,
+    )
     runner = RuleRunner(config, embedder)
+    changed = await runner.gather_changed(all_files=all_files, include_unstaged=include_unstaged)
+
+    if verbose and output_format is OutputFormat.text:
+        from rich.console import Console  # noqa: PLC0415
+
+        selected_preview = runner._select_rules(rule)
+        Console().print(
+            f"[dim]codecongruence: scanning {len(changed)} file(s) "
+            f"with {len(selected_preview)} rule(s)…[/dim]"
+        )
 
     result = await runner.run(
         only=rule,
-        all_files=all_files,
-        include_unstaged=include_unstaged,
+        pre_gathered=changed,
     )
 
     if output_format is OutputFormat.json:

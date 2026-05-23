@@ -7,10 +7,12 @@ process. ONNX-based fastembed avoids the PyTorch dependency entirely.
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import hashlib
 import json
 import logging
+import threading
 from typing import TYPE_CHECKING, Protocol, cast
 
 import numpy as np
@@ -48,11 +50,17 @@ class Embedder:
     Defaults to ``BAAI/bge-small-en-v1.5`` (384-dim, MTEB 62.2). Lazily loads
     the underlying model on first call so unit tests can patch the backend.
 
-    When ``cache_dir`` is provided the in-memory cache is loaded from
-    ``<cache_dir>/embeddings.json.gz`` at construction and flushed back after
-    every new batch of embeddings, so repeated runs never re-embed unchanged
-    text.  The cache is keyed by content-hash and tagged with the model name;
-    entries from a different model are silently discarded.
+    Args:
+        model_name: fastembed model identifier.
+        backend: Override the fastembed backend (used in tests).
+        cache_dir: Directory for the per-run vector cache
+            (``<cache_dir>/embeddings.json.gz``). Keyed by content-hash +
+            model name; stale entries from a different model are discarded.
+        model_cache_dir: Directory where fastembed stores downloaded model
+            weights. Defaults to the fastembed system default (temp dir).
+            Pass ``~/.cache/codecongruence`` for a persistent cross-run cache.
+        threads: ONNX Runtime inter-op thread count forwarded to fastembed.
+            ``None`` lets fastembed choose (usually one thread per CPU core).
     """
 
     def __init__(
@@ -61,11 +69,17 @@ class Embedder:
         *,
         backend: EmbeddingBackend | None = None,
         cache_dir: Path | None = None,
+        model_cache_dir: Path | None = None,
+        threads: int | None = None,
     ) -> None:
+        """Initialize the embedder. See class docstring for parameter details."""
         self.model_name = model_name
         self._backend: EmbeddingBackend | None = backend
         self._cache: dict[str, NDArray[np.float32]] = {}
         self._cache_dir = cache_dir
+        self._model_cache_dir = model_cache_dir
+        self._threads = threads
+        self._lock = threading.Lock()
         if cache_dir is not None:
             self._load_disk_cache(cache_dir)
 
@@ -105,7 +119,12 @@ class Embedder:
             # the onnxruntime / tokenizers load cost.
             from fastembed import TextEmbedding  # noqa: PLC0415
 
-            self._backend = cast("EmbeddingBackend", TextEmbedding(model_name=self.model_name))
+            kwargs: dict[str, object] = {"model_name": self.model_name}
+            if self._model_cache_dir is not None:
+                kwargs["cache_dir"] = str(self._model_cache_dir)
+            if self._threads is not None:
+                kwargs["threads"] = self._threads
+            self._backend = cast("EmbeddingBackend", TextEmbedding(**kwargs))  # type: ignore[arg-type]
         return self._backend
 
     def embed(self, texts: Sequence[str]) -> NDArray[np.float32]:
@@ -176,13 +195,37 @@ class Embedder:
             return 0.0
         return float(min(1.0, max(-1.0, np.dot(a, b) / (na * nb))))
 
-    def similarity(self, left: str, right: str) -> float:
-        """Convenience: cosine similarity between two strings.
+    def _embed_locked(self, texts: list[str]) -> NDArray[np.float32]:
+        """Embed ``texts`` under the instance lock (thread-safe, blocking).
+
+        Returns:
+            Float32 matrix as returned by :meth:`embed`.
+        """
+        with self._lock:
+            return self.embed(texts)
+
+    async def warm_up(self) -> None:
+        """Load the embedding backend and warm up the ONNX runtime.
+
+        Triggers model download on first call. Safe to call multiple times.
+        """
+        await asyncio.to_thread(self._embed_locked, ["warm up"])
+
+    async def similarity(self, left: str, right: str) -> float:
+        """Cosine similarity between two strings, non-blocking.
+
+        Runs the embedding in a thread-pool worker so the asyncio event loop
+        stays free while ONNX computes. Concurrent rule tasks can therefore
+        overlap their I/O and light CPU work while ONNX runs in the background.
+
+        Args:
+            left: First string.
+            right: Second string.
 
         Returns:
             Cosine similarity in ``[-1.0, 1.0]``, or ``0.0`` if either string is blank.
         """
         if not left.strip() or not right.strip():
             return 0.0
-        mat = self.embed([left, right])
+        mat = await asyncio.to_thread(self._embed_locked, [left, right])
         return self.cosine(mat[0], mat[1])

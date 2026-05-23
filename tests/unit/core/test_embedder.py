@@ -23,13 +23,13 @@ def test_cosine_zero_vector_safe() -> None:
     assert Embedder.cosine(a, b) == 0.0
 
 
-def test_similarity_overlapping_words(fake_embedder: Embedder) -> None:
-    sim = fake_embedder.similarity("connect to database", "database connection helper")
+async def test_similarity_overlapping_words(fake_embedder: Embedder) -> None:
+    sim = await fake_embedder.similarity("connect to database", "database connection helper")
     assert sim > 0.4
 
 
-def test_similarity_disjoint_text_low(fake_embedder: Embedder) -> None:
-    sim = fake_embedder.similarity("draw a triangle", "send an email")
+async def test_similarity_disjoint_text_low(fake_embedder: Embedder) -> None:
+    sim = await fake_embedder.similarity("draw a triangle", "send an email")
     assert sim < 0.15
 
 
@@ -45,8 +45,8 @@ def test_empty_input_returns_zeros(fake_embedder: Embedder) -> None:
     assert out.shape == (0, 0)
 
 
-def test_backend_protocol_accepted() -> None:
+async def test_backend_protocol_accepted() -> None:
     backend = BagOfWordsBackend()
     emb = Embedder(model_name="x", backend=backend)
-    sim = emb.similarity("hello world", "hello world")
+    sim = await emb.similarity("hello world", "hello world")
     assert sim == 1.0

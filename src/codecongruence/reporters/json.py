@@ -20,7 +20,11 @@ class JsonReporter:
         self.stream = stream or sys.stdout
 
     def report(self, result: RunResult) -> None:
-        """Write a single JSON document with violations and run metadata to ``stream``."""
+        """Write a single JSON document with violations and run metadata to ``stream``.
+
+        Args:
+            result: The run result to serialise.
+        """
         payload = {
             "ok": result.ok,
             "rules_run": list(result.rules_run),

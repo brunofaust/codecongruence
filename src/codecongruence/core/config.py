@@ -44,7 +44,12 @@ class RuleConfig(BaseModel):
     exclude_functions: list[str] = Field(default_factory=list)
 
     def extra(self, key: str, default: Any = None) -> Any:
-        """Return an unknown-but-allowed extra option from the rule config."""
+        """Return an unknown-but-allowed extra option from the rule config.
+
+        Args:
+            key: Attribute name to look up.
+            default: Value to return when the key is absent.
+        """
         return (
             getattr(self, key, default)
             if hasattr(self, key)
@@ -59,6 +64,7 @@ class CodeCongruenceConfig(BaseModel):
 
     model: str = "BAAI/bge-small-en-v1.5"
     parallel: bool = True
+    threads: int | None = None
     exclude: list[str] = Field(default_factory=list)
     exclude_functions: list[str] = Field(default_factory=list)
     rules: dict[str, RuleConfig] = Field(default_factory=dict)
@@ -67,6 +73,9 @@ class CodeCongruenceConfig(BaseModel):
 
     def rule(self, rule_id: str) -> RuleConfig:
         """Return per-rule config with global excludes merged in.
+
+        Args:
+            rule_id: The rule identifier (e.g. ``"docstring_vs_body"``).
 
         Returns:
             A :class:`RuleConfig` combining global and per-rule exclude lists.
@@ -84,7 +93,11 @@ class CodeCongruenceConfig(BaseModel):
 
 
 def default_config_path(repo_root: Path | None = None) -> Path:
-    """Return the canonical stand-alone config path at the repo root."""
+    """Return the canonical stand-alone config path at the repo root.
+
+    Args:
+        repo_root: Repository root directory. Defaults to current working directory.
+    """
     return (repo_root or Path.cwd()) / "codecongruence.toml"
 
 
@@ -94,6 +107,9 @@ def _pyproject_path(repo_root: Path) -> Path:
 
 def discover_config_path(repo_root: Path | None = None) -> Path | None:
     """Find the active config file using the documented priority order.
+
+    Args:
+        repo_root: Repository root to search. Defaults to current working directory.
 
     Returns:
         The config file path, or ``None`` if neither ``pyproject.toml
@@ -172,6 +188,7 @@ def load_config(path: Path | None = None, repo_root: Path | None = None) -> Code
     return CodeCongruenceConfig(
         model=section.get("model", "BAAI/bge-small-en-v1.5"),
         parallel=section.get("parallel", True),
+        threads=section.get("threads", None),
         exclude=section.get("exclude", []),
         exclude_functions=section.get("exclude_functions", []),
         rules=rules,

@@ -12,7 +12,7 @@ parallel = true
 [rules.docstring_vs_body]
 enabled = true
 threshold = 0.30
-body_statements_threshold = 3
+min_body_statement_count = 3
 min_docstring_chars = 10
 # Per-rule file excludes (added on top of global exclude).
 exclude = ["tests/**", "**/__init__.py"]
@@ -22,15 +22,20 @@ exclude = ["tests/**", "**/__init__.py"]
 [rules.name_vs_body]
 enabled = true
 threshold = 0.25
+min_body_statement_count = 2
 ignore_names = ["main", "run", "setup", "handle", "process", "execute"]
 
 [rules.param_name_vs_usage]
 enabled = true
 threshold = 0.20
+min_body_statement_count = 2
+min_param_name_chars = 2
 
 [rules.params_in_docstring]
 enabled = true
 skip_variadic = true
+exclude = ["tests/**"]
+exclude_functions = ["main"]
 
 [rules.claude_md_vs_diff]
 enabled = true
@@ -47,8 +52,8 @@ enabled = true
 threshold = 0.20
 context_lines = 5
 
-[rules.changelog_exists]
+[rules.docs_on_change]
 enabled = true
-changelog_path = "CHANGELOG.md"
-unreleased_header = "## [Unreleased]"
+threshold = 0.20
 trigger_paths = ["src/**"]
+docs_files = ["CHANGELOG.md", "README.md"]

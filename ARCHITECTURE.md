@@ -27,15 +27,17 @@
            │                                │
            ▼                                ▼
 ┌─────────────────────────┐    ┌────────────────────────────┐
-│ Embedder (single load,  │    │ Rules (6×)                 │
-│ ONNX, content-cached)   │    │  docstring_vs_body         │
-│       core/embedder.py  │    │  name_vs_body              │
-└─────────────────────────┘    │  claude_md_vs_diff         │
-                               │  pr_description_vs_diff    │
-┌─────────────────────────┐    │  stale_comments            │
-│ Git helpers (async)     │    │  changelog_exists          │
-│       core/git.py       │    │  rules/*.py                │
-└─────────────────────────┘    └────────────────────────────┘
+│ Embedder (single load,  │    │ Rules (8×)                 │
+│ ONNX, content-cached)   │    │  name_vs_body        C001  │
+│       core/embedder.py  │    │  param_name_vs_usage C002  │
+└─────────────────────────┘    │  docstring_vs_body   D001  │
+                               │  stale_comments      D002  │
+┌─────────────────────────┐    │  claude_md_vs_diff   D003  │
+│ Git helpers (async)     │    │  pr_description_…    D004  │
+│       core/git.py       │    │  docs_on_change      D005  │
+└─────────────────────────┘    │  params_in_docstring D006  │
+                               │  rules/*.py                │
+                               └────────────────────────────┘
 
 ┌─────────────────────────┐    ┌────────────────────────────┐
 │ AST helpers             │    │ Reporters                  │
@@ -74,8 +76,11 @@ A small `Protocol`: `rule_id`, `description`, `default_threshold`, and one
 `async def check(changed_files, embedder, config) -> Sequence[RuleViolation]`.
 
 `RuleConfig` is a frozen Pydantic model with `extra="allow"` so per-rule
-options like `body_statements_threshold`, `exclude`, `context_lines`, `code_paths`,
-etc. flow through without a per-rule schema explosion.
+options like `min_body_statement_count`, `exclude`, `exclude_functions`,
+`context_lines`, `code_paths`, `docs_files`, `trigger_paths`, `skip_variadic`,
+etc. flow through without a per-rule schema explosion. See
+[`codecongruence.toml.example`](codecongruence.toml.example) for the full
+option reference.
 
 ### Config discovery
 
@@ -149,7 +154,7 @@ Exit code is `0` if no `error`-severity violations, else `1`.
 - **Integration test** initialises a real git repo in `tmp_path`, plants a
     function with a misleading docstring + a `src/` change without a CHANGELOG
     bullet, runs the full `RuleRunner`, and asserts both `docstring_vs_body`
-    and `changelog_exists` fire.
+    and `docs_on_change` fire.
 - A separate **`@pytest.mark.slow`** lane (not in the default suite) will
     eventually exercise the real ONNX model end-to-end.
 

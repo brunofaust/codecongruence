@@ -53,6 +53,9 @@ def _text(node: Node, src: bytes) -> str:
 def _parse_jsdoc(raw: str) -> str:
     """Strip ``/** ... */`` delimiters and leading ``*`` from each line.
 
+    Args:
+        raw: Raw comment text including ``/**`` and ``*/`` delimiters.
+
     Returns:
         Clean text with delimiters and leading asterisks removed.
     """
@@ -111,7 +114,12 @@ def _extract_js_params(node: Node, src: bytes) -> tuple[str, ...]:
 
 
 def _js_body_source(node: Node, lines: list[str]) -> str:
-    """Return the inner content of a ``statement_block``, skipping ``{``/``}``."""
+    """Return the inner content of a ``statement_block``, skipping ``{``/``}``.
+
+    Args:
+        node: The body AST node (``statement_block`` or expression for arrow fns).
+        lines: Source lines of the file (0-indexed).
+    """
     if node.type != "statement_block":
         # Arrow function with expression body — return the whole expression text
         start = node.start_point[0]
@@ -136,6 +144,15 @@ def _make_js_function(
     override_name: str | None = None,
 ) -> FunctionInfo | None:
     """Build a FunctionInfo from a JS/TS function node.
+
+    Args:
+        node: The JS/TS function AST node.
+        src: Raw source bytes of the file.
+        lines: Source lines of the file (0-indexed).
+        qualifier: Dotted class/function prefix for the qualified name.
+        is_method: Whether this function is a class method.
+        jsdoc: Parsed JSDoc text preceding the node, or ``None``.
+        override_name: Use this name instead of the node's own name field.
 
     Returns:
         A populated :class:`FunctionInfo`, or ``None`` when a required node is missing.
@@ -179,6 +196,13 @@ def _walk_js(
     is_method: bool,
 ) -> Iterator[FunctionInfo]:
     """Recursively walk a tree node, yielding every JS/TS function found.
+
+    Args:
+        node: The current tree-sitter AST node to descend into.
+        src: Raw source bytes of the file.
+        lines: Source lines of the file (0-indexed).
+        qualifier: Dotted class/function prefix for qualified names.
+        is_method: Whether children of this node are class methods.
 
     Yields:
         One :class:`FunctionInfo` per function/method encountered.
@@ -241,6 +265,13 @@ def _walk_var_decl(
 ) -> Iterator[FunctionInfo]:
     """Handle ``const f = () => ...`` and ``const f = function() {...}``.
 
+    Args:
+        node: The ``lexical_declaration`` or ``variable_declaration`` AST node.
+        src: Raw source bytes of the file.
+        lines: Source lines of the file (0-indexed).
+        qualifier: Dotted prefix for qualified names.
+        jsdoc: JSDoc comment preceding this declaration, or ``None``.
+
     Yields:
         One :class:`FunctionInfo` per named arrow/function-expression declarator.
     """
@@ -274,6 +305,13 @@ def _walk_export(
     jsdoc: str | None,
 ) -> Iterator[FunctionInfo]:
     """Unwrap an export statement and yield inner functions/classes.
+
+    Args:
+        node: The ``export_statement`` or ``export_default_declaration`` AST node.
+        src: Raw source bytes of the file.
+        lines: Source lines of the file (0-indexed).
+        qualifier: Dotted prefix for qualified names.
+        jsdoc: JSDoc comment preceding this export, or ``None``.
 
     Yields:
         One :class:`FunctionInfo` per exported function, class method, or variable.
@@ -319,7 +357,12 @@ class JavaScriptParser:
         self._func_cache: dict[int, list[FunctionInfo]] = {}
 
     def iter_functions(self, source: str, path: Path) -> Iterator[FunctionInfo]:
-        """Yield FunctionInfo for every function/method. Survives syntax errors."""
+        """Yield FunctionInfo for every function/method. Survives syntax errors.
+
+        Args:
+            source: Full source text of the file.
+            path: File path (for qualified name prefixes and caching).
+        """
         key = hash(source)
         if key not in self._func_cache:
             src_bytes = source.encode("utf-8")
@@ -335,6 +378,10 @@ class JavaScriptParser:
         Skips JSDoc (``/**``), block comments (``/*``), TODO/FIXME markers,
         and shebangs.  Single-line comments with fewer than
         ``_MIN_COMMENT_WORDS`` words are also skipped.
+
+        Args:
+            source: Full source text of the file.
+            context_lines: Lines of following code to capture per comment block.
         """
         lines = source.splitlines()
         for idx, raw in enumerate(lines):

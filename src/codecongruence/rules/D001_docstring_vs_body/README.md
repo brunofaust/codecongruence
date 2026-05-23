@@ -12,8 +12,8 @@ swapped but the docstring was forgotten.
 
 1. Walk every staged `.py` file with `ast.parse`.
 1. For each `FunctionDef`/`AsyncFunctionDef`:
-    - Skip if the body has fewer than `body_statements_threshold` (default 3).
-    - Skip if the docstring is shorter than `min_docstring_chars` (default 10).
+    - Skip if the body has fewer than `min_body_statement_count` AST statements (default 3).
+    - Skip if the docstring is shorter than `min_docstring_chars` characters (default 10).
     - Skip if decorated with `@overload` / `@typing.overload`.
     - Skip `__init__` of `@dataclass` classes.
     - Skip if the staged diff did not touch this function's line range.
@@ -29,8 +29,8 @@ swapped but the docstring was forgotten.
 [rules.docstring_vs_body]
 enabled = true
 threshold = 0.30
-body_statements_threshold = 3
-min_docstring_chars = 10
+min_body_statement_count = 3   # skip trivial bodies (AST statement count)
+min_docstring_chars = 10       # skip one-liners like "TODO"
 exclude = ["tests/**", "**/__init__.py"]
 ```
 

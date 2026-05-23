@@ -11,12 +11,12 @@ from codecongruence.rules.D001_docstring_vs_body import DocstringVsBodyRule
 from codecongruence.rules.D002_stale_comments import StaleCommentsRule
 from codecongruence.rules.D003_claude_md_vs_diff import ClaudeMdVsDiffRule
 from codecongruence.rules.D004_pr_description_vs_diff import PrDescriptionVsDiffRule
-from codecongruence.rules.D005_changelog_exists import ChangelogExistsRule
+from codecongruence.rules.D005_changelog_exists import DocsOnChangeRule
 from codecongruence.rules.D006_params_in_docstring import ParamsInDocstringRule
 
 __all__ = [
-    "ChangelogExistsRule",
     "ClaudeMdVsDiffRule",
+    "DocsOnChangeRule",
     "DocstringVsBodyRule",
     "NameVsBodyRule",
     "ParamNameVsUsageRule",

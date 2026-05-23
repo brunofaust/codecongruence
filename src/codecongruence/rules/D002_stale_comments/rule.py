@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from codecongruence.parsers import get_parser
 from codecongruence.rules.base import RuleViolation
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -33,6 +36,11 @@ class StaleCommentsRule:
     ) -> Sequence[RuleViolation]:
         """Check each inline comment against the code that follows it.
 
+        Args:
+            changed_files: Files to check (staged or all).
+            embedder: Shared embedder for semantic similarity.
+            config: Per-rule configuration (threshold, excludes, extras).
+
         Returns:
             Sequence of :class:`RuleViolation` for each stale comment.
         """
@@ -51,9 +59,20 @@ class StaleCommentsRule:
 
             for comment in cf.iter_comments(parser, source, context_lines=ctx_lines):
                 if cf.added_ranges and not cf.overlaps(comment.line, comment.line + ctx_lines):
+                    log.debug("D002 SKIP not_in_diff %s:%d", cf.path, comment.line)
                     continue
 
-                sim = embedder.similarity(comment.text, comment.following_code)
+                sim = await embedder.similarity(comment.text, comment.following_code)
+                log.debug(
+                    "D002 %s:%d  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",
+                    cf.path,
+                    comment.line,
+                    comment.text[:120],
+                    comment.following_code[:120],
+                    sim,
+                    threshold,
+                    "FAIL" if sim < threshold else "PASS",
+                )
                 if sim < threshold:
                     violations.append(
                         RuleViolation(

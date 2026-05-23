@@ -26,9 +26,9 @@ parallel = false
 [rules.docstring_vs_body]
 enabled = true
 threshold = 0.42
-body_statements_threshold = 5
+min_body_statement_count = 5
 
-[rules.changelog_exists]
+[rules.docs_on_change]
 enabled = false
         """.strip()
     )
@@ -36,7 +36,7 @@ enabled = false
     assert cfg.parallel is False
     assert cfg.rule("docstring_vs_body").threshold == 0.42
     assert cfg.rule("docstring_vs_body").enabled is True
-    assert cfg.rule("changelog_exists").enabled is False
+    assert cfg.rule("docs_on_change").enabled is False
     assert cfg.enabled_rules() == ["docstring_vs_body"]
 
 
@@ -69,16 +69,16 @@ parallel = false
 [tool.codecongruence.rules.docstring_vs_body]
 enabled = true
 threshold = 0.42
-body_statements_threshold = 5
+min_body_statement_count = 5
 
-[tool.codecongruence.rules.changelog_exists]
+[tool.codecongruence.rules.docs_on_change]
 enabled = false
         """.strip()
     )
     cfg = load_config(repo_root=tmp_path)
     assert cfg.parallel is False
     assert cfg.rule("docstring_vs_body").threshold == 0.42
-    assert cfg.rule("changelog_exists").enabled is False
+    assert cfg.rule("docs_on_change").enabled is False
     assert cfg.source is not None
     assert cfg.source.name == "pyproject.toml"
 

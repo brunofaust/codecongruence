@@ -59,9 +59,10 @@ enabled = false
 enabled = true
 threshold = 0.20
 
-[rules.changelog_exists]
+[rules.docs_on_change]
 enabled = true
 trigger_paths = ["src/**"]
+docs_files = ["CHANGELOG.md"]
         """.strip()
     )
     (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n\n")
@@ -105,8 +106,8 @@ def test_full_run_flags_planted_violations(
     rule_ids = {v.rule_id for v in result.violations}
     # docstring_vs_body must fire on bad.py
     assert "docstring_vs_body" in rule_ids
-    # changelog_exists fires because we touched src/ but did not bump CHANGELOG
-    assert "changelog_exists" in rule_ids
+    # docs_on_change fires because we touched src/ but did not bump CHANGELOG
+    assert "docs_on_change" in rule_ids
 
 
 def test_clean_repo_passes(tmp_path: Path, fake_embedder: Embedder) -> None:
