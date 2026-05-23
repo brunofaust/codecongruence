@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `init` now passes the git-discovered repo root to `default_config_path`,
+    fixing incorrect config paths when invoked from a subdirectory.
+
 ### Fixed
 
 - CLI now uses Click's default error handling (`standalone_mode=True`). User

@@ -169,10 +169,14 @@ def init_cmd(
 ) -> None:
     """Write a default ``codecongruence.toml`` at the repo root.
 
+    Args:
+        path: Output path for the config file (default: repo root).
+        force: If True, overwrite an existing config.
+
     Raises:
         Exit: With code ``1`` when a config already exists and ``--force`` was not passed.
     """
-    target = path or default_config_path()
+    target = path or default_config_path(asyncio.run(current_repo_root()))
     if target.exists() and not force:
         typer.echo(f"refusing to overwrite {target} (pass --force)")
         raise typer.Exit(code=1)
