@@ -12,25 +12,10 @@ concurrency:
 
 jobs:
   prek:
-    name: prek (lint + format + typos + tests)
+    name: prek
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: install uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          enable-cache: true
-
-      - name: set up python
-        run: uv python install 3.11
-
-      - name: sync deps
-        run: uv sync --extra dev
-
-      - name: install prek
-        run: pip install prek
-
-      - name: run prek
-        run: prek run --all-files
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --extra dev
+      - run: uv run prek run --all-files
