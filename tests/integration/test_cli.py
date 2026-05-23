@@ -29,7 +29,9 @@ def _git(repo: Path, *args: str) -> None:
 
 @pytest.fixture
 def runner() -> CliRunner:
-    return CliRunner()
+    # Force deterministic terminal width and no ANSI codes so help-text
+    # assertions work the same in CI (no TTY, unknown COLUMNS) and locally.
+    return CliRunner(env={"COLUMNS": "200", "NO_COLOR": "1"})
 
 
 def test_version_prints_and_exits_zero(runner: CliRunner) -> None:
