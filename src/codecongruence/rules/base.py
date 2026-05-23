@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
@@ -12,7 +13,27 @@ if TYPE_CHECKING:
     from codecongruence.core.embedder import Embedder
     from codecongruence.core.git import ChangedFile
 
-__all__ = ["Rule", "RuleViolation", "Severity"]
+__all__ = ["Rule", "RuleViolation", "Severity", "strip_comments"]
+
+# Matches inline and full-line comments for Python (#) and JS/TS (//).
+# (?<!:) preserves https:// URLs.
+INLINE_COMMENT_RE = re.compile(r"(?<!:)\s*(?:#|//).*$", re.MULTILINE)
+
+
+def strip_comments(source: str) -> str:
+    """Remove inline and full-line comments, then drop resulting blank lines.
+
+    Handles Python ``#`` and JS/TS ``//`` style comments.  Block-style
+    ``/* … */`` comments are not stripped.
+
+    Args:
+        source: Raw function body source text.
+
+    Returns:
+        Source with ``#`` and ``//`` comments removed and blank lines stripped.
+    """
+    cleaned = INLINE_COMMENT_RE.sub("", source)
+    return "\n".join(line for line in cleaned.splitlines() if line.strip())
 
 
 Severity = Literal["error", "warning"]

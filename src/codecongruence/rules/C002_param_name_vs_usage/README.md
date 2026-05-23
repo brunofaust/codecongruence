@@ -48,7 +48,18 @@ enabled = true
 threshold = 0.20
 min_body_statement_count = 2   # skip trivial bodies (AST statement count)
 min_param_name_chars = 2       # skip single-letter params like i, n, x
+include_comments = true        # include # / // comments in usage context (default)
 ```
+
+### `include_comments` (default `true`)
+
+By default, comment lines that reference a parameter are included in the usage
+context. A comment like `# validate user_id before processing` is a real signal
+about what the parameter represents and should count toward the embedding.
+
+Set to `false` to restrict the check to executable lines only — useful if your
+codebase has many auto-generated or stale comments that you don't want
+influencing the score.
 
 ## Notes
 
