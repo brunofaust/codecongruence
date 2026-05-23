@@ -179,6 +179,10 @@ class Embedder:
         to worry about backend-dim drift. Clamps to [-1.0, 1.0] to absorb
         float32 round-off on near-identical vectors.
 
+        Args:
+            a: First 1-D float32 vector.
+            b: Second 1-D float32 vector.
+
         Returns:
             Cosine similarity in ``[-1.0, 1.0]``, or ``0.0`` for zero vectors.
         """

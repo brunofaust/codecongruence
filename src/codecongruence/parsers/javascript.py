@@ -75,6 +75,10 @@ def _extract_js_params(node: Node, src: bytes) -> tuple[str, ...]:
     ``required_parameter`` / ``optional_parameter`` nodes.  Skips destructured
     patterns (``object_pattern``, ``array_pattern``) since they have no single name.
 
+    Args:
+        node: The function AST node whose parameters to extract.
+        src: Raw source bytes of the file.
+
     Returns:
         Tuple of parameter name strings; variadic names are prefixed with ``*``.
     """
