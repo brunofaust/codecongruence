@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Automated release pipeline: `python-semantic-release` runs on push to main,
+    reads conventional commits, bumps `pyproject.toml`, writes `CHANGELOG.md`,
+    and creates a GitHub release + git tag. No manual version bumps or CHANGELOG
+    edits required. `commitizen` prek hook validates conventional commit format
+    on every commit. D005 (`docs_on_change`) updated to require only `README.md`
+    (not `CHANGELOG.md`, which PSR now owns).
+
 - Rule C001 (`name_vs_body`) and C002 (`param_name_vs_usage`): added
     `include_comments` config option (default `False` for C001, `True` for C002).
     C001 strips `#` and `//` inline comments from function body before embedding

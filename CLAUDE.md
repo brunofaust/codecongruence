@@ -57,16 +57,45 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for details.
     `async def check(changed_files, embedder, config) -> Sequence[RuleViolation]`.
 1. Register it in `core/runner.py::default_rules()`.
 1. Add a section to `codecongruence.toml`, `codecongruence.toml.example`, and
-    to the spec block in `cli.py`'s `_DEFAULT_TOML`.
+    to the spec block in `cli.py`'s `DEFAULT_TOML`.
 1. Write a unit test under `tests/unit/rules/<CODE>_<name>/test_<name>.py`
     and extend `tests/integration/test_full_run.py`.
+
+## Commits and releases
+
+Commits must follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <short summary>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Common types and their version impact:
+
+| Type                                               | Impact     | When to use             |
+| -------------------------------------------------- | ---------- | ----------------------- |
+| `feat`                                             | minor bump | new user-facing feature |
+| `fix`                                              | patch bump | bug fix                 |
+| `perf`                                             | patch bump | performance improvement |
+| `feat!` / `BREAKING CHANGE`                        | major bump | breaking API change     |
+| `chore`, `docs`, `refactor`, `test`, `build`, `ci` | no bump    | maintenance             |
+
+The `commitizen` prek hook validates the format on every commit. If your
+commit message is rejected, rewrite it with `git commit --amend`.
+
+Releases are fully automated: `python-semantic-release` reads commit history
+on merge to `main`, bumps `pyproject.toml`, writes `CHANGELOG.md`, and
+creates a GitHub release + git tag. **Do not bump the version or edit
+`CHANGELOG.md` manually.**
 
 ## Eat own dogfood
 
 The repo runs `codecongruence` on itself in CI. Any PR must:
 
 - Pass all eight rules on the diff.
-- Add a bullet under `## [Unreleased]` in `CHANGELOG.md`.
 - Update docs (this file, `ARCHITECTURE.md`, `README.md`) when the change
     affects architecture or public API.
 
@@ -74,7 +103,7 @@ The repo runs `codecongruence` on itself in CI. Any PR must:
 
 ```bash
 uv sync --extra dev
-uv run pytest                       # 93 tests, <2s
+uv run pytest                       # ~100 tests, <2s
 uv run ruff check src tests
 uv run ruff format src tests
 uv run mypy
