@@ -1,7 +1,6 @@
 """Typer CLI entry. Wires config → embedder → runner → reporter."""
 
 import asyncio
-import sys
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -213,5 +212,4 @@ async def _run(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    app(prog_name="codecongruence", standalone_mode=False)
-    sys.exit(0)
+    app(prog_name="codecongruence")

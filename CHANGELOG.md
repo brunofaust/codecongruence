@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- CLI now uses Click's default error handling (`standalone_mode=True`). User
+    errors like typos in subcommand names now produce clean error messages with
+    suggestions (e.g. "Did you mean 'init'?") instead of raw Python tracebacks.
+
 ### Added
 
 - `prek.toml` with a busydone-style lint chain at the repo root: ruff,
