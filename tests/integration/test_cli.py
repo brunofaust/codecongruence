@@ -29,9 +29,7 @@ def _git(repo: Path, *args: str) -> None:
 
 @pytest.fixture
 def runner() -> CliRunner:
-    # Force deterministic terminal width and no ANSI codes so help-text
-    # assertions work the same in CI (no TTY, unknown COLUMNS) and locally.
-    return CliRunner(env={"COLUMNS": "200", "NO_COLOR": "1"})
+    return CliRunner()
 
 
 def test_version_prints_and_exits_zero(runner: CliRunner) -> None:
@@ -40,7 +38,8 @@ def test_version_prints_and_exits_zero(runner: CliRunner) -> None:
     assert "codecongruence" in result.stdout
 
 
-def test_help_lists_init_subcommand(runner: CliRunner) -> None:
+def test_help_lists_init_subcommand(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "init" in result.stdout
