@@ -195,8 +195,6 @@ async def _run(
     repo_root = await current_repo_root()
     config = load_config(path=config_path, repo_root=repo_root)
     cache_dir = repo_root / ".codecongruence"
-    if not cache_dir.exists():
-        _ensure_gitignore_entry(repo_root)
     embedder = Embedder(model_name=config.model, cache_dir=cache_dir)
     runner = RuleRunner(config, embedder)
 
