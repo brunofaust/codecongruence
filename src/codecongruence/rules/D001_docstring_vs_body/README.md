@@ -31,8 +31,20 @@ enabled = true
 threshold = 0.30
 min_body_statement_count = 3   # skip trivial bodies (AST statement count)
 min_docstring_chars = 10       # skip one-liners like "TODO"
+include_comments = false       # strip # / // comments before embedding (default)
 exclude = ["tests/**", "**/__init__.py"]
 ```
+
+### `include_comments` (default `false`)
+
+By default inline comments (`#` for Python, `//` for JS/TS) are stripped from
+the body before embedding. A comment that repeats the docstring verbatim would
+otherwise inflate similarity and hide real drift between the docstring and the
+actual logic.
+
+Set to `true` only if you want comments to count as part of the "what the code
+does" signal — for example, when your codebase relies heavily on in-body
+annotations that are genuinely authoritative.
 
 ## False-positive escape hatches
 

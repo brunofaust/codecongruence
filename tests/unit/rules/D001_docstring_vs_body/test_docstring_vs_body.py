@@ -60,3 +60,43 @@ def trivial():
     f = tmp_path / "mod.py"
     f.write_text(src)
     assert _check(DocstringVsBodyRule(), f, fake_embedder) == []
+
+
+def test_comment_matching_docstring_does_not_suppress_violation(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """A comment that mirrors the docstring must not hide drift (default behaviour)."""
+    src = '''
+def compute_fibonacci(n):
+    """Compute the n-th Fibonacci number recursively."""
+    # Compute the n-th Fibonacci number recursively
+    payload = {"recipient": n, "subject": "invoice"}
+    transport.deliver(payload)
+    log.info("sent invoice")
+    return payload
+'''
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check(DocstringVsBodyRule(), f, fake_embedder)
+    assert len(violations) == 1
+
+
+def test_include_comments_true_allows_comment_to_boost_similarity(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """With include_comments=true a matching comment can satisfy the threshold."""
+    src = '''
+def compute_fibonacci(n):
+    """Compute the n-th Fibonacci number recursively."""
+    # Compute the n-th Fibonacci number recursively
+    payload = {"recipient": n, "subject": "invoice"}
+    transport.deliver(payload)
+    log.info("sent invoice")
+    return payload
+'''
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    cfg = RuleConfig(threshold=0.30, include_comments=True)
+    cf = ChangedFile(path=f, added_ranges=())
+    violations = asyncio.run(DocstringVsBodyRule().check([cf], fake_embedder, cfg))
+    assert violations == []
