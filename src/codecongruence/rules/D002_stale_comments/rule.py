@@ -31,6 +31,11 @@ class StaleCommentsRule:
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
+        """Check each inline comment against the code that follows it.
+
+        Returns:
+            Sequence of :class:`RuleViolation` for each stale comment.
+        """
         threshold = self.default_threshold if config.threshold is None else config.threshold
         ctx_lines = int(getattr(config, "context_lines", 5) or 5)
 
@@ -44,7 +49,7 @@ class StaleCommentsRule:
             except OSError:
                 continue
 
-            for comment in parser.iter_comments(source, context_lines=ctx_lines):
+            for comment in cf.iter_comments(parser, source, context_lines=ctx_lines):
                 if cf.added_ranges and not cf.overlaps(comment.line, comment.line + ctx_lines):
                     continue
 

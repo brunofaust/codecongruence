@@ -36,6 +36,11 @@ class ChangelogExistsRule:
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
+        """Check that a CHANGELOG ``[Unreleased]`` bullet exists when src/ changes.
+
+        Returns:
+            Sequence of :class:`RuleViolation`; at most one per run.
+        """
         triggers: list[str] = list(getattr(config, "trigger_paths", ["src/**"]) or ["src/**"])
         changelog_path = Path(getattr(config, "changelog_path", "CHANGELOG.md") or "CHANGELOG.md")
         unreleased = str(getattr(config, "unreleased_header", "## [Unreleased]"))
@@ -86,6 +91,9 @@ def _has_added_bullet_under_header(diff: str, header: str) -> bool:
 
     Walks the unified diff; tracks whether the current hunk has passed the
     ``[Unreleased]`` header on either the old or new side.
+
+    Returns:
+        ``True`` when the diff contains a new bullet item under ``header``.
     """
     in_unreleased = False
     for raw in diff.splitlines():

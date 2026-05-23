@@ -1,5 +1,7 @@
-"""Bundled rules. New rules drop in by adding a ``XNNN_<name>/`` subfolder and
-registering in ``core/runner.py::default_rules``.
+"""Bundled rules.
+
+New rules drop in by adding a ``XNNN_<name>/`` subfolder and registering in
+``core/runner.py::default_rules``.
 """
 
 from codecongruence.rules.base import Rule, RuleViolation, Severity

@@ -42,6 +42,11 @@ class NameVsBodyRule:
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
+        """Check for name/body drift in every changed function.
+
+        Returns:
+            Sequence of :class:`RuleViolation` for each mismatched function.
+        """
         threshold = self.default_threshold if config.threshold is None else config.threshold
         ignore: frozenset[str] = frozenset(
             getattr(config, "ignore_names", None) or _GENERIC_NAMES_DEFAULT
@@ -57,7 +62,7 @@ class NameVsBodyRule:
             except OSError:
                 continue
 
-            for func in parser.iter_functions(source, cf.path):
+            for func in cf.iter_functions(parser, source):
                 if func.name in ignore or func.name.startswith("test_"):
                     continue
                 if is_overload_decorated(func.decorators) or is_dataclass_init(func):

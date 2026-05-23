@@ -49,7 +49,11 @@ def _text(node: Node, src: bytes) -> str:
 
 
 def _decorator_name(node: Node, src: bytes) -> str:
-    """Extract the callable name from a ``decorator`` node."""
+    """Extract the callable name from a ``decorator`` node.
+
+    Returns:
+        The decorator's name string, or an empty string when not resolvable.
+    """
     for child in node.children:
         if child.type == "identifier":
             return _text(child, src)
@@ -101,6 +105,9 @@ def _extract_parameters(node: Node, src: bytes) -> tuple[str, ...]:
 
     Skips ``self`` and ``cls``. Variadic parameters are prefixed with ``*``
     (``*args``) or ``**`` (``**kwargs``) so callers can filter them.
+
+    Returns:
+        Tuple of parameter name strings; variadic names carry their ``*`` prefix.
     """
     params_node = node.child_by_field_name("parameters")
     if params_node is None:
@@ -125,7 +132,7 @@ def _extract_parameters(node: Node, src: bytes) -> tuple[str, ...]:
                 inner = next((c for c in child.named_children if c.type == "identifier"), None)
                 if inner is not None:
                     name = "**" + _text(inner, src)
-        if name and name not in ("self", "cls"):
+        if name and name not in {"self", "cls"}:
             names.append(name)
     return tuple(names)
 
@@ -168,7 +175,11 @@ def _walk(
     parent_is_dataclass: bool,
     is_method: bool,
 ) -> Iterator[FunctionInfo]:
-    """Recursively walk a tree node, yielding every function/method found."""
+    """Recursively walk a tree node, yielding every function/method found.
+
+    Yields:
+        One :class:`FunctionInfo` per function/method encountered in the tree.
+    """
     for child in node.named_children:
         # ── decorated_definition: unwrap decorators + inner node ──────────
         decorators: tuple[str, ...] = ()

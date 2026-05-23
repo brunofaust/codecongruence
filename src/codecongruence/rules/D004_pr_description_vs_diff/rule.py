@@ -31,6 +31,11 @@ class PrDescriptionVsDiffRule:
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
+        """Check that the PR description matches the staged diff.
+
+        Returns:
+            Sequence of :class:`RuleViolation`; at most one per run.
+        """
         body = os.environ.get("CODECONGRUENCE_PR_BODY", "").strip()
         if not body or not changed_files:
             return []

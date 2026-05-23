@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from fnmatch import fnmatch
 from typing import TYPE_CHECKING
 
 from codecongruence.parsers import get_parser
@@ -11,7 +10,6 @@ from codecongruence.rules.base import RuleViolation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     from codecongruence.core.config import RuleConfig
     from codecongruence.core.embedder import Embedder
@@ -28,31 +26,32 @@ class DocstringVsBodyRule:
     description: str = "Docstring should describe what the function actually does."
     default_threshold: float = 0.30
 
-    def _excluded(self, path: Path, patterns: Sequence[str]) -> bool:
-        return any(fnmatch(str(path), pat) for pat in patterns)
-
     async def check(
         self,
         changed_files: Sequence[ChangedFile],
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
+        """Check each function whose docstring diverges from its body.
+
+        Returns:
+            Sequence of :class:`RuleViolation` for each drifted docstring.
+        """
         threshold = self.default_threshold if config.threshold is None else config.threshold
         min_stmts = int(getattr(config, "body_statements_threshold", 3) or 3)
         min_doc = int(getattr(config, "min_docstring_chars", 10) or 10)
-        exclude: list[str] = list(getattr(config, "exclude", []) or [])
 
         violations: list[RuleViolation] = []
         for cf in changed_files:
             parser = get_parser(cf.path.suffix)
-            if parser is None or self._excluded(cf.path, exclude):
+            if parser is None:
                 continue
             try:
                 source = cf.path.read_text(encoding="utf-8")
             except OSError:
                 continue
 
-            for func in parser.iter_functions(source, cf.path):
+            for func in cf.iter_functions(parser, source):
                 if not func.docstring or len(func.docstring) < min_doc:
                     continue
                 if func.body_statements < min_stmts:

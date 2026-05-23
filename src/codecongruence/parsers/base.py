@@ -65,12 +65,20 @@ class LanguageParser(Protocol):
 
 
 def is_overload_decorated(decorators: tuple[str, ...]) -> bool:
-    """True if any decorator marks the function as ``typing.overload``."""
+    """True if any decorator marks the function as ``typing.overload``.
+
+    Returns:
+        ``True`` when any element of ``decorators`` is ``"overload"`` or ``"typing.overload"``.
+    """
     return any(d in _OVERLOAD_DECORATORS for d in decorators)
 
 
 def is_dataclass_init(func: FunctionInfo) -> bool:
-    """True for ``__init__`` of a dataclass — auto-generated, nothing to check."""
+    """True for ``__init__`` of a dataclass — auto-generated, nothing to check.
+
+    Returns:
+        ``True`` when the function is ``__init__`` on a dataclass.
+    """
     return func.name == "__init__" and func.parent_is_dataclass
 
 
@@ -114,6 +122,9 @@ def split_identifier(name: str) -> str:
     """Split camelCase / snake_case / PascalCase into space-separated words.
 
     Expands common abbreviations. Used by C001 to embed the function name.
+
+    Returns:
+        Space-separated lowercase words with abbreviations expanded.
     """
     snake = name.replace("_", " ")
     chunks: list[str] = []

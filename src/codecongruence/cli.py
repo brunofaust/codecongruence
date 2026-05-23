@@ -65,6 +65,23 @@ enabled = true
 """
 
 
+def _ensure_gitignore_entry(repo_root: Path, entry: str = ".codecongruence") -> bool:
+    """Add ``entry`` to ``.gitignore`` if absent.
+
+    Returns:
+        ``True`` if the entry was added, ``False`` if it was already present.
+    """
+    gitignore = repo_root / ".gitignore"
+    if gitignore.exists():
+        text = gitignore.read_text(encoding="utf-8")
+        if any(line.strip() == entry for line in text.splitlines()):
+            return False
+        gitignore.write_text(text.rstrip("\n") + f"\n{entry}\n", encoding="utf-8")
+    else:
+        gitignore.write_text(f"{entry}\n", encoding="utf-8")
+    return True
+
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"codecongruence {__version__}")
@@ -119,7 +136,11 @@ def main(
         ),
     ] = False,
 ) -> None:
-    """Run codecongruence on staged changes (default) or the whole repo (``--all``)."""
+    """Run codecongruence on staged changes (default) or the whole repo (``--all``).
+
+    Raises:
+        Exit: With code ``1`` when any error-severity violation is found.
+    """
     if ctx.invoked_subcommand is not None:
         return
 
@@ -147,13 +168,19 @@ def init_cmd(
         typer.Option("--force", help="Overwrite an existing config."),
     ] = False,
 ) -> None:
-    """Write a default ``codecongruence.toml`` at the repo root."""
+    """Write a default ``codecongruence.toml`` at the repo root.
+
+    Raises:
+        Exit: With code ``1`` when a config already exists and ``--force`` was not passed.
+    """
     target = path or default_config_path()
     if target.exists() and not force:
         typer.echo(f"refusing to overwrite {target} (pass --force)")
         raise typer.Exit(code=1)
     target.write_text(_DEFAULT_TOML, encoding="utf-8")
     typer.echo(f"wrote {target}")
+    if _ensure_gitignore_entry(target.parent):
+        typer.echo("added .codecongruence to .gitignore")
 
 
 async def _run(
@@ -168,6 +195,8 @@ async def _run(
     repo_root = await current_repo_root()
     config = load_config(path=config_path, repo_root=repo_root)
     cache_dir = repo_root / ".codecongruence"
+    if not cache_dir.exists():
+        _ensure_gitignore_entry(repo_root)
     embedder = Embedder(model_name=config.model, cache_dir=cache_dir)
     runner = RuleRunner(config, embedder)
 

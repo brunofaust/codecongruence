@@ -32,6 +32,11 @@ class ClaudeMdVsDiffRule:
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
+        """Check that code and docs diffs are semantically aligned.
+
+        Returns:
+            Sequence of :class:`RuleViolation`; at most one per run.
+        """
         threshold = self.default_threshold if config.threshold is None else config.threshold
         code_globs: list[str] = list(getattr(config, "code_paths", ["src/**"]) or ["src/**"])
         docs_files: list[str] = list(getattr(config, "docs_files", ["CLAUDE.md"]) or ["CLAUDE.md"])

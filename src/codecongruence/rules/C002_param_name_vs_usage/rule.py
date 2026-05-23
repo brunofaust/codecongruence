@@ -36,6 +36,11 @@ class ParamNameVsUsageRule:
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
+        """Check each parameter name against how it is used in the function body.
+
+        Returns:
+            Sequence of :class:`RuleViolation` for each mismatched parameter.
+        """
         threshold = self.default_threshold if config.threshold is None else config.threshold
 
         violations: list[RuleViolation] = []
@@ -48,7 +53,7 @@ class ParamNameVsUsageRule:
             except OSError:
                 continue
 
-            for func in parser.iter_functions(source, cf.path):
+            for func in cf.iter_functions(parser, source):
                 if is_overload_decorated(func.decorators) or is_dataclass_init(func):
                     continue
                 if func.body_statements < _MIN_BODY_STATEMENTS:

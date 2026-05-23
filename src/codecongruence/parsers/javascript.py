@@ -51,7 +51,11 @@ def _text(node: Node, src: bytes) -> str:
 
 
 def _parse_jsdoc(raw: str) -> str:
-    """Strip ``/** ... */`` delimiters and leading ``*`` from each line."""
+    """Strip ``/** ... */`` delimiters and leading ``*`` from each line.
+
+    Returns:
+        Clean text with delimiters and leading asterisks removed.
+    """
     inner = raw.strip()
     if inner.startswith("/**"):
         inner = inner[3:]
@@ -67,6 +71,9 @@ def _extract_js_params(node: Node, src: bytes) -> tuple[str, ...]:
     Handles plain JS identifiers, defaults, rest patterns, and TypeScript
     ``required_parameter`` / ``optional_parameter`` nodes.  Skips destructured
     patterns (``object_pattern``, ``array_pattern``) since they have no single name.
+
+    Returns:
+        Tuple of parameter name strings; variadic names are prefixed with ``*``.
     """
     params_node = node.child_by_field_name("parameters")
     if params_node is None:
@@ -128,7 +135,11 @@ def _make_js_function(
     jsdoc: str | None,
     override_name: str | None = None,
 ) -> FunctionInfo | None:
-    """Build a FunctionInfo from a JS/TS function node."""
+    """Build a FunctionInfo from a JS/TS function node.
+
+    Returns:
+        A populated :class:`FunctionInfo`, or ``None`` when a required node is missing.
+    """
     # Name resolution
     if override_name is not None:
         name = override_name
@@ -167,7 +178,11 @@ def _walk_js(
     qualifier: str,
     is_method: bool,
 ) -> Iterator[FunctionInfo]:
-    """Recursively walk a tree node, yielding every JS/TS function found."""
+    """Recursively walk a tree node, yielding every JS/TS function found.
+
+    Yields:
+        One :class:`FunctionInfo` per function/method encountered.
+    """
     prev_jsdoc: str | None = None
 
     for child in node.named_children:
@@ -190,7 +205,7 @@ def _walk_js(
                     yield from _walk_js(body, src, lines, f"{qualifier}{info.name}.", False)
 
         # ── class declaration ─────────────────────────────────────────────
-        elif child.type in ("class_declaration", "class"):
+        elif child.type in {"class_declaration", "class"}:
             name_node = child.child_by_field_name("name")
             class_name = _text(name_node, src) if name_node else "?"
             body = child.child_by_field_name("body")
@@ -212,7 +227,7 @@ def _walk_js(
             yield from _walk_var_decl(child, src, lines, qualifier, jsdoc)
 
         # ── export statement wrapping a function/class ────────────────────
-        elif child.type in ("export_statement", "export_default_declaration"):
+        elif child.type in {"export_statement", "export_default_declaration"}:
             # Pass jsdoc through; recurse treating the export as transparent.
             yield from _walk_export(child, src, lines, qualifier, jsdoc)
 
@@ -224,7 +239,11 @@ def _walk_var_decl(
     qualifier: str,
     jsdoc: str | None,
 ) -> Iterator[FunctionInfo]:
-    """Handle ``const f = () => ...`` and ``const f = function() {...}``."""
+    """Handle ``const f = () => ...`` and ``const f = function() {...}``.
+
+    Yields:
+        One :class:`FunctionInfo` per named arrow/function-expression declarator.
+    """
     for decl in node.named_children:
         if decl.type != "variable_declarator":
             continue
@@ -254,7 +273,11 @@ def _walk_export(
     qualifier: str,
     jsdoc: str | None,
 ) -> Iterator[FunctionInfo]:
-    """Unwrap an export statement and yield inner functions/classes."""
+    """Unwrap an export statement and yield inner functions/classes.
+
+    Yields:
+        One :class:`FunctionInfo` per exported function, class method, or variable.
+    """
     for child in node.named_children:
         if child.type in _FUNC_DECL_TYPES:
             info = _make_js_function(child, src, lines, qualifier, False, jsdoc)
@@ -263,7 +286,7 @@ def _walk_export(
                 body = child.child_by_field_name("body")
                 if body:
                     yield from _walk_js(body, src, lines, f"{qualifier}{info.name}.", False)
-        elif child.type in ("class_declaration", "class"):
+        elif child.type in {"class_declaration", "class"}:
             name_node = child.child_by_field_name("name")
             class_name = _text(name_node, src) if name_node else "?"
             body = child.child_by_field_name("body")

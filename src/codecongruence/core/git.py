@@ -12,6 +12,12 @@ import asyncio
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from codecongruence.parsers.base import CommentBlock, FunctionInfo, LanguageParser
 
 __all__ = [
     "ChangedFile",
@@ -29,14 +35,49 @@ class ChangedFile:
 
     path: Path
     added_ranges: tuple[tuple[int, int], ...]
+    excluded_fn_ranges: tuple[tuple[int, int], ...] = ()
 
     def covers(self, line: int) -> bool:
-        """True if ``line`` lies inside any added range."""
+        """True if ``line`` lies inside any added range.
+
+        Returns:
+            ``True`` if the line falls within at least one added range.
+        """
         return any(lo <= line <= hi for lo, hi in self.added_ranges)
 
     def overlaps(self, start: int, end: int) -> bool:
-        """True if ``[start, end]`` intersects any added range."""
+        """True if ``[start, end]`` intersects any added range.
+
+        Returns:
+            ``True`` if the interval overlaps at least one added range.
+        """
         return any(not (end < lo or start > hi) for lo, hi in self.added_ranges)
+
+    def iter_functions(self, parser: LanguageParser, source: str) -> Iterator[FunctionInfo]:
+        """Yield functions parsed from source, skipping runner-excluded ones.
+
+        Yields:
+            :class:`~codecongruence.parsers.base.FunctionInfo` for each non-excluded function.
+        """
+        for func in parser.iter_functions(source, self.path):
+            if not any(s <= func.line_start and func.line_end <= e for s, e in self.excluded_fn_ranges):
+                yield func
+
+    def iter_comments(
+        self,
+        parser: LanguageParser,
+        source: str,
+        *,
+        context_lines: int = 5,
+    ) -> Iterator[CommentBlock]:
+        """Yield comments parsed from source, skipping those inside excluded function ranges.
+
+        Yields:
+            :class:`~codecongruence.parsers.base.CommentBlock` for each non-excluded comment.
+        """
+        for comment in parser.iter_comments(source, context_lines=context_lines):
+            if not any(s <= comment.line <= e for s, e in self.excluded_fn_ranges):
+                yield comment
 
 
 async def _run_git(*args: str, cwd: Path | None = None) -> str:
@@ -67,6 +108,9 @@ async def staged_changed_files(
     """List files staged for commit (or staged+unstaged if asked).
 
     Filters out deleted paths — semantic rules need the file to read.
+
+    Returns:
+        Paths of added/copied/modified/renamed staged files.
     """
     args = ["diff", "--name-only", "--diff-filter=ACMR"]
     if not include_unstaged:
@@ -126,5 +170,9 @@ async def git_diff_unified(*, cwd: Path | None = None) -> str:
 
 
 async def git_diff(path: Path, *, cwd: Path | None = None) -> str:
-    """Unified diff for a single staged file."""
+    """Unified diff for a single staged file.
+
+    Returns:
+        Unified diff text, or an empty string when there are no staged changes.
+    """
     return await _run_git("diff", "--cached", "--unified=3", "--", str(path), cwd=cwd)

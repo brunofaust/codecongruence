@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from codecongruence.core.embedder import Embedder
     from codecongruence.core.git import ChangedFile
 
-__all__ = ["ParamsInDocstringRule"]
+__all__ = ["ParamsInDocstringRule", "mentioned"]
 
 
 class ParamsInDocstringRule:
@@ -33,6 +33,11 @@ class ParamsInDocstringRule:
         embedder: Embedder,
         config: RuleConfig,
     ) -> Sequence[RuleViolation]:
+        """Check that every parameter is mentioned somewhere in the docstring.
+
+        Returns:
+            Sequence of :class:`RuleViolation` for each undocumented parameter.
+        """
         skip_variadic: bool = bool(getattr(config, "skip_variadic", True))
 
         violations: list[RuleViolation] = []
@@ -45,7 +50,7 @@ class ParamsInDocstringRule:
             except OSError:
                 continue
 
-            for func in parser.iter_functions(source, cf.path):
+            for func in cf.iter_functions(parser, source):
                 if not func.docstring:
                     continue
                 if is_overload_decorated(func.decorators) or is_dataclass_init(func):
@@ -59,7 +64,7 @@ class ParamsInDocstringRule:
                 if not params:
                     continue
 
-                missing = [p for p in params if not _mentioned(p, func.docstring)]
+                missing = [p for p in params if not mentioned(p, func.docstring)]
                 if missing:
                     violations.append(
                         RuleViolation(
@@ -79,6 +84,10 @@ class ParamsInDocstringRule:
         return violations
 
 
-def _mentioned(param_name: str, docstring: str) -> bool:
-    """True if param_name appears as a whole word anywhere in the docstring."""
+def mentioned(param_name: str, docstring: str) -> bool:
+    """True if param_name appears as a whole word anywhere in the docstring.
+
+    Returns:
+        ``True`` when ``param_name`` matches at a word boundary inside ``docstring``.
+    """
     return bool(re.search(r"\b" + re.escape(param_name) + r"\b", docstring))

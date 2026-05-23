@@ -30,7 +30,9 @@ log = logging.getLogger(__name__)
 class EmbeddingBackend(Protocol):
     """Minimal protocol implemented by ``fastembed.TextEmbedding``."""
 
-    def embed(self, documents: Sequence[str]) -> Iterable[NDArray[np.float32]]: ...
+    def embed(self, documents: Sequence[str]) -> Iterable[NDArray[np.float32]]:
+        """Embed a batch of documents into float32 vectors."""
+        ...
 
 
 def _hash(text: str) -> str:
@@ -67,7 +69,8 @@ class Embedder:
         if cache_dir is not None:
             self._load_disk_cache(cache_dir)
 
-    def _cache_path(self, cache_dir: Path) -> Path:
+    @staticmethod
+    def _cache_path(cache_dir: Path) -> Path:
         return cache_dir / _CACHE_FILE
 
     def _load_disk_cache(self, cache_dir: Path) -> None:
@@ -76,10 +79,10 @@ class Embedder:
             return
         try:
             with gzip.open(path, "rb") as fh:
-                data: dict = json.loads(fh.read())
+                data: dict[str, object] = json.loads(fh.read())
             if data.get("model") != self.model_name:
                 return  # different model — discard stale cache
-            for key, vec in data.get("embeddings", {}).items():
+            for key, vec in cast("dict[str, object]", data.get("embeddings", {})).items():
                 self._cache[key] = np.array(vec, dtype=np.float32)
         except (OSError, json.JSONDecodeError, ValueError):
             log.debug("could not load embedding cache from %s", path)
@@ -109,6 +112,9 @@ class Embedder:
         """Embed ``texts`` → ``(n, d)`` float32 matrix.
 
         Cached per-text by content hash. Empty strings short-circuit to zeros.
+
+        Returns:
+            Float32 matrix of shape ``(len(texts), embedding_dim)``.
         """
         if not texts:
             return np.zeros((0, 0), dtype=np.float32)
@@ -153,6 +159,9 @@ class Embedder:
         Pads the shorter vector with zeros if shapes differ so callers don't have
         to worry about backend-dim drift. Clamps to [-1.0, 1.0] to absorb
         float32 round-off on near-identical vectors.
+
+        Returns:
+            Cosine similarity in ``[-1.0, 1.0]``, or ``0.0`` for zero vectors.
         """
         if a.shape != b.shape:
             n = max(int(a.shape[0]), int(b.shape[0]))
@@ -163,12 +172,16 @@ class Embedder:
             a, b = a_pad, b_pad
         na = float(np.linalg.norm(a))
         nb = float(np.linalg.norm(b))
-        if na == 0.0 or nb == 0.0:
+        if not na or not nb:
             return 0.0
         return float(min(1.0, max(-1.0, np.dot(a, b) / (na * nb))))
 
     def similarity(self, left: str, right: str) -> float:
-        """Convenience: cosine similarity between two strings."""
+        """Convenience: cosine similarity between two strings.
+
+        Returns:
+            Cosine similarity in ``[-1.0, 1.0]``, or ``0.0`` if either string is blank.
+        """
         if not left.strip() or not right.strip():
             return 0.0
         mat = self.embed([left, right])

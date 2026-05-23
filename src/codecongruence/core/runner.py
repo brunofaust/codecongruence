@@ -8,11 +8,14 @@ Loads the built-in rule set, filters by config, and runs them concurrently with
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from typing import TYPE_CHECKING
 
 from codecongruence.core.embedder import Embedder
 from codecongruence.core.git import ChangedFile, staged_changed_files, staged_changed_line_ranges
+from codecongruence.parsers import get_parser
 from codecongruence.rules.C001_name_vs_body import NameVsBodyRule
 from codecongruence.rules.C002_param_name_vs_usage import ParamNameVsUsageRule
 from codecongruence.rules.D001_docstring_vs_body import DocstringVsBodyRule
@@ -32,6 +35,35 @@ if TYPE_CHECKING:
 __all__ = ["RuleRunner", "RunResult", "default_rules", "run_rules"]
 
 
+def _apply_file_excludes(changed: list[ChangedFile], patterns: list[str]) -> list[ChangedFile]:
+    if not patterns:
+        return changed
+    return [cf for cf in changed if not any(fnmatch(str(cf.path), pat) for pat in patterns)]
+
+
+def _apply_function_excludes(changed: list[ChangedFile], exclude_fns: list[str]) -> list[ChangedFile]:
+    if not exclude_fns:
+        return changed
+    result: list[ChangedFile] = []
+    for cf in changed:
+        parser = get_parser(cf.path.suffix)
+        if parser is None:
+            result.append(cf)
+            continue
+        try:
+            source = cf.path.read_text(encoding="utf-8")
+        except OSError:
+            result.append(cf)
+            continue
+        excluded = tuple(
+            (func.line_start, func.line_end)
+            for func in parser.iter_functions(source, cf.path)
+            if any(fnmatch(func.qualified_name, pat) for pat in exclude_fns)
+        )
+        result.append(dataclasses.replace(cf, excluded_fn_ranges=excluded) if excluded else cf)
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class RunResult:
     """Aggregated outcome of a single run."""
@@ -42,6 +74,7 @@ class RunResult:
 
     @property
     def ok(self) -> bool:
+        """True when no violation has ``severity == "error"``."""
         return not any(v.severity == "error" for v in self.violations)
 
 
@@ -79,7 +112,11 @@ class RuleRunner:
         include_unstaged: bool = False,
         all_files: bool = False,
     ) -> list[ChangedFile]:
-        """Build the :class:`ChangedFile` list the rules consume."""
+        """Build the :class:`ChangedFile` list the rules consume.
+
+        Returns:
+            Resolved list of changed files with their added line ranges.
+        """
         root = self.config.repo_root
         if all_files:
             files = [p for p in root.rglob("*") if p.is_file() and ".git" not in p.parts]
@@ -107,7 +144,11 @@ class RuleRunner:
         include_unstaged: bool = False,
         all_files: bool = False,
     ) -> RunResult:
-        """Execute selected rules and return their combined violations."""
+        """Execute selected rules and return their combined violations.
+
+        Returns:
+            Aggregated :class:`RunResult` with all violations sorted by file + line.
+        """
         changed = await self.gather_changed(
             explicit_files=explicit_files,
             include_unstaged=include_unstaged,
@@ -120,16 +161,26 @@ class RuleRunner:
             async with asyncio.TaskGroup() as group:
                 tasks = [
                     group.create_task(
-                        rule.check(changed, self.embedder, self.config.rule(rule.rule_id))
+                        rule.check(
+                            _apply_function_excludes(
+                                _apply_file_excludes(changed, self.config.rule(rule.rule_id).exclude),
+                                self.config.rule(rule.rule_id).exclude_functions,
+                            ),
+                            self.embedder,
+                            self.config.rule(rule.rule_id),
+                        )
                     )
                     for rule in selected
                 ]
             results = [t.result() for t in tasks]
         else:
             for rule in selected:
-                results.append(
-                    await rule.check(changed, self.embedder, self.config.rule(rule.rule_id))
+                rule_cfg = self.config.rule(rule.rule_id)
+                filtered = _apply_function_excludes(
+                    _apply_file_excludes(changed, rule_cfg.exclude),
+                    rule_cfg.exclude_functions,
                 )
+                results.append(await rule.check(filtered, self.embedder, rule_cfg))
 
         flat: list[RuleViolation] = []
         for r in results:
@@ -152,7 +203,11 @@ async def run_rules(
     all_files: bool = False,
     embedder: Embedder | None = None,
 ) -> RunResult:
-    """Convenience wrapper that constructs the embedder + runner for one call."""
+    """Convenience wrapper that constructs the embedder + runner for one call.
+
+    Returns:
+        Aggregated :class:`RunResult` from a single-use :class:`RuleRunner`.
+    """
     emb = embedder or Embedder(config.model)
     runner = RuleRunner(config, emb)
     return await runner.run(

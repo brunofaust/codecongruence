@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from codecongruence.core.config import RuleConfig
 from codecongruence.core.git import ChangedFile
 from codecongruence.rules.D006_params_in_docstring import ParamsInDocstringRule
-from codecongruence.rules.D006_params_in_docstring.rule import _mentioned
+from codecongruence.rules.D006_params_in_docstring.rule import mentioned
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -26,28 +26,28 @@ def _check(file: Path, emb: Embedder, **kwargs):
 
 
 def test_mentioned_exact_match() -> None:
-    assert _mentioned("user_id", "user_id: The identifier of the user.")
+    assert mentioned("user_id", "user_id: The identifier of the user.")
 
 
 def test_mentioned_in_prose() -> None:
-    assert _mentioned("record", "Pass the record and it will be saved.")
+    assert mentioned("record", "Pass the record and it will be saved.")
 
 
 def test_mentioned_sphinx_style() -> None:
-    assert _mentioned("user_id", ":param user_id: The user identifier.")
+    assert mentioned("user_id", ":param user_id: The user identifier.")
 
 
 def test_mentioned_numpy_style() -> None:
-    assert _mentioned("user_id", "user_id : int\n    The user identifier.")
+    assert mentioned("user_id", "user_id : int\n    The user identifier.")
 
 
-def test_not_mentioned() -> None:
-    assert not _mentioned("record", "Saves the user to the database.")
+def test_notmentioned() -> None:
+    assert not mentioned("record", "Saves the user to the database.")
 
 
 def test_mentioned_word_boundary() -> None:
     # "records" should NOT count as mentioning "record"
-    assert not _mentioned("record", "Processes all records in the batch.")
+    assert not mentioned("record", "Processes all records in the batch.")
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ def process(user_id, record):
     assert any(v.rule_id == "params_in_docstring" for v in violations)
 
 
-def test_passes_all_params_mentioned(tmp_path: Path, fake_embedder) -> None:
+def test_passes_all_paramsmentioned(tmp_path: Path, fake_embedder) -> None:
     src = '''
 def process(user_id, record):
     """Save the user_id and the record to the database."""
