@@ -253,7 +253,7 @@ exclude_commit_patterns = [
   "^Merge (pull request|branch)",
 ]
 upload_to_pypi = false
-build_command = false
+build_command = ""
 remote.type = "github"
 
 [tool.commitizen]
