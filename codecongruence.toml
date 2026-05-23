@@ -1,0 +1,47 @@
+# codecongruence — semantic pre-commit hook config.
+# This file is consumed by codecongruence at the repo root.
+
+[codecongruence]
+model = "BAAI/bge-small-en-v1.5"
+parallel = true
+
+[rules.docstring_vs_body]
+enabled = true
+threshold = 0.30
+body_statements_threshold = 3
+min_docstring_chars = 10
+exclude = ["tests/**", "**/__init__.py"]
+
+[rules.name_vs_body]
+enabled = true
+threshold = 0.25
+ignore_names = ["main", "run", "setup", "handle", "process", "execute"]
+
+[rules.param_name_vs_usage]
+enabled = true
+threshold = 0.20
+
+[rules.params_in_docstring]
+enabled = true
+skip_variadic = true
+
+[rules.claude_md_vs_diff]
+enabled = true
+threshold = 0.20
+code_paths = ["src/**"]
+docs_files = ["CLAUDE.md"]
+
+[rules.pr_description_vs_diff]
+enabled = false
+threshold = 0.25
+
+[rules.stale_comments]
+enabled = true
+threshold = 0.20
+context_lines = 5
+
+[rules.changelog_exists]
+enabled = true
+changelog_path = "CHANGELOG.md"
+unreleased_header = "## [Unreleased]"
+trigger_paths = ["src/**"]

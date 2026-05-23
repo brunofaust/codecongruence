@@ -1,0 +1,211 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling>=1.25" ]
+
+[project]
+name = "codecongruence"
+version = "0.1.0"
+description = "Semantic pre-commit hooks. Keep your repo congruent — one story, not many."
+readme = "README.md"
+keywords = [ "documentation", "drift", "embeddings", "linter", "pre-commit", "semantic" ]
+license = { file = "LICENSE" }
+authors = [ { name = "Bruno Faust" } ]
+requires-python = ">=3.11"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+  "fastembed>=0.4",
+  "numpy>=1.26",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "rich>=13.7",
+  "tree-sitter>=0.21",
+  "tree-sitter-javascript>=0.21",
+  "tree-sitter-python>=0.21",
+  "tree-sitter-typescript>=0.21",
+  "typer>=0.12",
+]
+optional-dependencies.dev = [
+  "mypy>=1.10",
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=5",
+  "ruff>=0.5",
+  "types-setuptools",
+]
+urls.Homepage = "https://github.com/brunofaust/codecongruence"
+urls.Issues = "https://github.com/brunofaust/codecongruence/issues"
+urls.Repository = "https://github.com/brunofaust/codecongruence"
+scripts.codecongruence = "codecongruence.cli:app"
+
+[tool.hatch]
+build.targets.wheel.packages = [ "src/codecongruence" ]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [ ".claude/", ".venv/", ".worktrees/", "tests/fixtures/" ]
+preview = true
+fix = true
+format.indent-style = "space"
+format.quote-style = "double"
+lint.select = [
+  "ANN",   # type-hint coverage
+  "ASYNC", # flake8-async (detect blocking calls in async)
+  "B",     # flake8-bugbear
+  "C4",    # flake8-comprehensions
+  "D",     # pydocstyle (checks presence, structural syntax, formatting)
+  "DOC",   # pydoclint (validates if args/returns/raises match code signatures)
+  "E",     # pycodestyle errors
+  "F",     # pyflakes
+  "I",     # isort
+  "PL",    # pylint subset
+  "RUF",   # ruff-specific rules
+  "S",     # flake8-bandit (security)
+  "SIM",   # flake8-simplify
+  "TCH",   # type-checking-only imports
+  "UP",    # pyupgrade
+  "W",     # pycodestyle warnings
+]
+lint.ignore = [
+  "ANN401",  # allow Any in narrow places (e.g. config extras)
+  "D105",    # Missing docstring in magic method (e.g., __str__)
+  "D107",    # Missing docstring in __init__ (document the class instead)
+  "E501",    # line length handled by formatter
+  "PLR0913", # too many args — typer signatures need flat parameter lists
+  "S101",    # assert is fine for non-test runtime invariants
+  "SIM105",  # contextlib.suppress vs try/except/pass is a style call
+]
+lint.per-file-ignores."tests/**" = [
+  "ANN",     # Allow docstring style violations in tests, since they often have less formal docstring needs
+  "D",
+  "DOC",
+  "PLR2004",
+  "S",
+  "S101"
+]
+lint.isort.known-first-party = [ "codecongruence" ]
+lint.pydocstyle.convention = "google"  # Explicitly force Google style documentation syntax
+
+[tool.typos]
+default.extend-words.codecongruence = "codecongruence"
+default.extend-words.fastembed = "fastembed"
+default.extend-words.MTEB = "MTEB"
+default.extend-words.docstring = "docstring"
+default.extend-words.docstrings = "docstrings"
+
+[tool.bandit]
+exclude_dirs = [ "tests", ".venv", ".worktrees" ]
+skips = [
+  "B101", # assert statements
+  "B404", # import subprocess — git helpers shell out by design
+  "B603", # subprocess without shell — that's the safe path
+  "B607", # partial path on `git` — git is on PATH everywhere
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+check_untyped_defs = true
+explicit_package_bases = true
+ignore_missing_imports = true
+mypy_path = "src"
+files = [ "src/codecongruence" ]
+exclude = [ "^\\.worktrees/", "^\\.claude/" ]
+
+[[tool.mypy.overrides]]
+module = [ "fastembed", "fastembed.*" ]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [ "tree_sitter", "tree_sitter_python", "tree_sitter_javascript", "tree_sitter_typescript" ]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest]
+ini_options.minversion = "8.0"
+ini_options.testpaths = [ "tests" ]
+ini_options.asyncio_mode = "auto"
+ini_options.asyncio_default_fixture_loop_scope = "function"
+ini_options.addopts = [ "-ra", "--strict-markers", "--strict-config", "--tb=short", "--color=yes" ]
+ini_options.pythonpath = [ ".", "tests" ]
+ini_options.markers = [
+  "slow: marks tests as slow (real model downloads, end-to-end runs)",
+  "integration: marks tests as integration (run a real git repo / subprocess)",
+]
+ini_options.log_cli = false
+ini_options.log_level = "ERROR"
+
+[tool.coverage]
+report.exclude_also = [
+  "@(abc\\.)?abstractmethod",
+  "def __repr__",
+  "if __name__ == .__main__.:",
+  "if 0:",
+  "if self\\.debug",
+  "if TYPE_CHECKING:",
+  "raise AssertionError",
+  "raise NotImplementedError",
+]
+
+[tool.interrogate]
+ignore-init-module = true
+ignore-magic = true
+ignore-setters = true
+ignore-overloaded-functions = true
+fail-under = 100
+exclude = [ "__init__.py", "tests", ".venv", "conftest.py", ".worktrees", ".claude" ]
+style = "google"
+verbose = 1
+quiet = false
+color = true
+omit-covered-files = true
+
+[tool.markdownlint]
+default = true
+MD003 = { style = "atx" }
+MD007 = { indent = 4 }
+no-hard-tabs = true
+whitespace = true
+files = [ "**/*.md" ]
+MD013 = false
+MD040 = false
+MD025 = false
+
+[tool.vulture]
+ignore_decorators = [ "@app.*", "@*.command", "@*.callback" ]
+ignore_names = [ "exc_type", "exc_val", "exc_tb" ]
+paths = [ "src/codecongruence" ]
+verbose = false
+exclude = [
+  "docs/*.py",
+  "tests/*.py",
+  ".venv/*.py",
+  "conftest.py",
+  ".claude/*.py",
+  ".worktrees/*.py",
+  ".mypy_cache/*.py",
+  ".pytest_cache/*.py",
+  ".ruff_cache/*.py",
+]

@@ -1,0 +1,8 @@
+- id: codecongruence
+  name: codecongruence
+  description: Semantic pre-commit checks (docstring/name/CLAUDE.md/PR/comment drift).
+  entry: codecongruence
+  language: python
+  pass_filenames: false
+  stages: [pre-commit]
+  require_serial: true

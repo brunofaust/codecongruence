@@ -1,0 +1,35 @@
+# `name_vs_body` — **C001**
+
+**What it catches:** A function whose name says one thing and whose body does
+another. Classic example: `validate_email()` that quietly sends emails;
+`get_user()` that deletes; `format_price()` that does network I/O.
+
+**Default threshold:** `0.25` (cosine).
+
+## How it works
+
+1. Walk staged `.py` files via the AST.
+1. Skip generic names (`main`, `run`, `setup`, `handle`, `process`, `execute`)
+    and `test_*` functions — they're intentionally vague.
+1. Skip `@overload` and dataclass-`__init__`.
+1. Skip if the staged diff did not touch the function.
+1. Expand the function name via `split_identifier()` (snake/camel split + a
+    small abbreviation dictionary: `db → database`, `cfg → configuration`,
+    `id → identifier`, …).
+1. Embed `expanded_name` vs `body_source` (without signature/docstring).
+1. Fail below threshold.
+
+## Configuration
+
+```toml
+[rules.name_vs_body]
+enabled = true
+threshold = 0.25
+ignore_names = ["main", "run", "setup", "handle"]
+```
+
+## Notes
+
+Short names produce naturally lower cosine even when aligned; that's why the
+default threshold is lower than for `docstring_vs_body`. Tune up only after
+you've checked a few real violations.
