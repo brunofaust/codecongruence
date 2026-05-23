@@ -52,7 +52,7 @@ uvx --from git+https://github.com/brunofaust/codecongruence codecongruence --all
 > the tool prints a warning and exits cleanly — it does not scan the whole repo.
 > Use `--all` for ad-hoc whole-repo scans.
 
-## The six MVP rules
+## Rules
 
 Each rule has a stable short **code** (`C00x` = code-identifier drift,
 `D00x` = documentation / artifact drift) shown in reports and easy to grep.
@@ -60,6 +60,7 @@ Each rule has a stable short **code** (`C00x` = code-identifier drift,
 | Code     | Rule                     | What it catches                                                              | Default threshold |
 | -------- | ------------------------ | ---------------------------------------------------------------------------- | ----------------- |
 | **C001** | `name_vs_body`           | `get_user()` that deletes, `validate_email()` that sends email               | 0.25              |
+| **C002** | `param_name_vs_usage`    | Parameter name clashes with how the parameter is used in the body            | 0.20              |
 | **D001** | `docstring_vs_body`      | Docstring describes one thing, function body does another                    | 0.30              |
 | **D002** | `stale_comments`         | Comment describes behavior the code no longer has                            | 0.20              |
 | **D003** | `claude_md_vs_diff`      | Unrelated one-line CLAUDE.md tweak buried under a 10k-LOC code change        | 0.20              |
