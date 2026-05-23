@@ -8,7 +8,8 @@ surrounding artifacts: docstrings, comments, function names, CLAUDE.md, PR
 descriptions, and CHANGELOG entries.
 
 It runs entirely offline (no API calls), uses an ONNX-based embedding model
-(no PyTorch), and ships as a regular `pip install` package.
+(no PyTorch), and is installed automatically by your pre-commit tool from this
+repo — no separate `pip install` needed.
 
 **Requirements:** Python ≥ 3.11.
 
@@ -20,23 +21,28 @@ It runs entirely offline (no API calls), uses an ONNX-based embedding model
 ## Quick start
 
 ```bash
-# 1. install
-pip install codecongruence
+# 1. add to .pre-commit-config.yaml
+#   repos:
+#     - repo: https://github.com/brunofaust/codecongruence
+#       rev: v0.1.0
+#       hooks:
+#         - id: codecongruence
 
-# 2. drop a default config into your repo
-codecongruence init
+# or prek.toml:
+#   [[repos]]
+#   repo = "https://github.com/brunofaust/codecongruence"
+#   rev = "v0.1.0"
+#   hooks = [{id = "codecongruence"}]
 
-# 3a. ad-hoc check on staged changes
+# 2. install hooks
+pre-commit install   # or: prek install
+
+# 3. drop a default config into your repo
+uvx --from git+https://github.com/brunofaust/codecongruence codecongruence init
+
+# 4. ad-hoc check on staged changes
 git add .
-codecongruence
-
-# 3b. or wire it into pre-commit
-# add to .pre-commit-config.yaml:
-#   - repo: https://github.com/brunofaust/codecongruence
-#     rev: v0.1.0
-#     hooks:
-#       - id: codecongruence
-pre-commit install
+pre-commit run codecongruence   # or: prek run codecongruence
 ```
 
 ## The six MVP rules
@@ -211,10 +217,9 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for details.
 ```bash
 git clone https://github.com/brunofaust/codecongruence
 cd codecongruence
-uv sync --extra dev
+uv sync
 uv run pytest
-uv run ruff check src tests
-uv run mypy
+uv run prek run --all-files
 ```
 
 PRs welcome. Please make sure `codecongruence` passes on its own diff before
