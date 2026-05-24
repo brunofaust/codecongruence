@@ -23,6 +23,7 @@ from codecongruence.core.git import (
 from codecongruence.parsers import get_parser
 from codecongruence.rules.C001_name_vs_body import NameVsBodyRule
 from codecongruence.rules.C002_param_name_vs_usage import ParamNameVsUsageRule
+from codecongruence.rules.C003_duplicate_functions import DuplicateFunctionsRule
 from codecongruence.rules.D001_docstring_vs_body import DocstringVsBodyRule
 from codecongruence.rules.D002_stale_comments import StaleCommentsRule
 from codecongruence.rules.D003_claude_md_vs_diff import ClaudeMdVsDiffRule
@@ -91,6 +92,7 @@ def default_rules() -> list[Rule]:
         DocstringVsBodyRule(),
         NameVsBodyRule(),
         ParamNameVsUsageRule(),
+        DuplicateFunctionsRule(),
         ClaudeMdVsDiffRule(),
         PrDescriptionVsDiffRule(),
         StaleCommentsRule(),

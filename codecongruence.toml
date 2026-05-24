@@ -57,3 +57,9 @@ enabled = true
 threshold = 0.20
 trigger_paths = ["src/**"]
 docs_files = ["README.md"]
+
+[rules.duplicate_functions]
+enabled = true
+threshold = 0.92
+min_body_statement_count = 3
+scope = "staged"
