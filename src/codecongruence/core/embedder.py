@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import logging
 import threading
+import time
 from typing import TYPE_CHECKING, Protocol, cast
 
 import numpy as np
@@ -59,6 +60,10 @@ class Embedder:
             Pass ``~/.cache/codecongruence`` for a persistent cross-run cache.
         threads: ONNX Runtime inter-op thread count forwarded to fastembed.
             ``None`` lets fastembed choose (usually one thread per CPU core).
+        cache_ttl_days: Entries not accessed within this many days are
+            discarded at load time. Set to ``0`` to disable TTL eviction.
+            :meth:`compact` removes entries not accessed in the current run;
+            call it at the end of a ``--all`` scan to evict stale embeddings.
     """
 
     def __init__(
@@ -69,14 +74,18 @@ class Embedder:
         cache_dir: Path | None = None,
         model_cache_dir: Path | None = None,
         threads: int | None = None,
+        cache_ttl_days: int = 30,
     ) -> None:
         """Initialize the embedder. See class docstring for parameter details."""
         self.model_name = model_name
         self._backend: EmbeddingBackend | None = backend
         self._cache: dict[str, NDArray[np.float32]] = {}
+        self._last_used: dict[str, float] = {}
+        self._seen: set[str] = set()
         self._cache_dir = cache_dir
         self._model_cache_dir = model_cache_dir
         self._threads = threads
+        self._cache_ttl_days = cache_ttl_days
         self._lock = threading.Lock()
         if cache_dir is not None:
             self._load_disk_cache(cache_dir)
@@ -85,19 +94,55 @@ class Embedder:
     def _cache_path(cache_dir: Path) -> Path:
         return cache_dir / _CACHE_FILE
 
+    @staticmethod
+    def _parse_npz(
+        path: Path, model_name: str, now: float
+    ) -> tuple[dict[str, NDArray[np.float32]], dict[str, float]] | None:
+        """Read an ``embeddings.npz`` file and return ``(cache, last_used)``.
+
+        Returns ``None`` when the stored model name does not match.
+        May raise ``OSError``, ``ValueError``, or ``KeyError`` on corrupt data.
+
+        Args:
+            path: Path to the ``.npz`` file.
+            model_name: Expected model name; mismatches return ``None``.
+            now: Current timestamp used when ``last_used`` is absent.
+
+        Returns:
+            A ``(cache, last_used)`` pair, or ``None`` on model mismatch.
+        """
+        data = np.load(path)
+        if str(data["model"]) != model_name:
+            return None
+        hashes: list[str] = data["hashes"].tolist()
+        matrix: NDArray[np.float32] = data["matrix"]
+        cache: dict[str, NDArray[np.float32]] = dict(zip(hashes, matrix, strict=True))
+        if "last_used" in data.files:
+            timestamps: list[float] = data["last_used"].tolist()
+            last_used: dict[str, float] = dict(zip(hashes, timestamps, strict=True))
+        else:
+            last_used = dict.fromkeys(hashes, now)
+        return cache, last_used
+
     def _load_disk_cache(self, cache_dir: Path) -> None:
         path = self._cache_path(cache_dir)
         if not path.exists():
             return
+        now = time.time()
         try:
-            data = np.load(path)
-            if str(data["model"]) != self.model_name:
-                return  # different model — discard stale cache
-            hashes: list[str] = data["hashes"].tolist()
-            matrix: NDArray[np.float32] = data["matrix"]
-            self._cache = dict(zip(hashes, matrix, strict=True))
+            parsed = self._parse_npz(path, self.model_name, now)
         except (OSError, ValueError, KeyError):
             log.debug("could not load embedding cache from %s", path)
+            return
+        if parsed is None:
+            return
+        cache, last_used = parsed
+        if self._cache_ttl_days > 0:
+            cutoff = now - self._cache_ttl_days * 86400
+            cache = {h: v for h, v in cache.items() if last_used.get(h, 0.0) >= cutoff}
+            last_used = {h: ts for h, ts in last_used.items() if h in cache}
+        self._cache = cache
+        self._last_used = last_used
 
     def _save_disk_cache(self, cache_dir: Path) -> None:
         if not self._cache:
@@ -108,6 +153,8 @@ class Embedder:
         matrix = np.zeros((len(vecs), max_dim), dtype=np.float32)
         for i, v in enumerate(vecs):
             matrix[i, : int(v.shape[0])] = v
+        now = time.time()
+        last_used_arr = np.array([self._last_used.get(h, now) for h in hashes], dtype=np.float64)
         try:
             cache_dir.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(
@@ -115,6 +162,7 @@ class Embedder:
                 model=np.array(self.model_name),
                 hashes=np.array(hashes),
                 matrix=matrix,
+                last_used=last_used_arr,
             )
         except OSError:
             log.debug("could not persist embedding cache to %s", cache_dir)
@@ -137,6 +185,7 @@ class Embedder:
         """Embed ``texts`` → ``(n, d)`` float32 matrix.
 
         Cached per-text by content hash. Empty strings short-circuit to zeros.
+        Accessed hashes are recorded for :meth:`compact`.
 
         Returns:
             Float32 matrix of shape ``(len(texts), embedding_dim)``.
@@ -144,27 +193,34 @@ class Embedder:
         if not texts:
             return np.zeros((0, 0), dtype=np.float32)
 
+        now = time.time()
         resolved: dict[int, NDArray[np.float32]] = {}
         missing_idx: list[int] = []
         missing_text: list[str] = []
+        missing_keys: list[str] = []
 
         for i, text in enumerate(texts):
             if not text.strip():
                 continue
             key = _hash(text)
+            self._seen.add(key)
             cached = self._cache.get(key)
             if cached is not None:
+                self._last_used[key] = now
                 resolved[i] = cached
             else:
                 missing_idx.append(i)
                 missing_text.append(text)
+                missing_keys.append(key)
 
         if missing_text:
             backend = self._ensure_backend()
             raw = list(backend.embed(missing_text))
             for pos, (slot, vec) in enumerate(zip(missing_idx, raw, strict=True)):
+                key = missing_keys[pos]
                 arr = np.asarray(vec, dtype=np.float32)
-                self._cache[_hash(missing_text[pos])] = arr
+                self._cache[key] = arr
+                self._last_used[key] = now
                 resolved[slot] = arr
             if self._cache_dir is not None:
                 self._save_disk_cache(self._cache_dir)
@@ -176,6 +232,24 @@ class Embedder:
             # and any future backend whose dim isn't perfectly constant per batch).
             result[i, : int(vec.shape[0])] = vec
         return result
+
+    def compact(self) -> int:
+        """Remove cache entries not accessed in this run and persist to disk.
+
+        Call this at the end of a ``--all`` scan to evict embeddings for texts
+        that no longer exist in the repo or were not visited. Pairs with the
+        TTL eviction in :meth:`_load_disk_cache` as a two-layer GC strategy.
+
+        Returns:
+            Number of entries removed from the cache.
+        """
+        stale = [h for h in self._cache if h not in self._seen]
+        for h in stale:
+            del self._cache[h]
+            self._last_used.pop(h, None)
+        if stale and self._cache_dir is not None:
+            self._save_disk_cache(self._cache_dir)
+        return len(stale)
 
     @staticmethod
     def cosine(a: NDArray[np.float32], b: NDArray[np.float32]) -> float:
