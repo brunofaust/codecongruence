@@ -23,12 +23,17 @@ jobs:
 
       - uses: astral-sh/setup-uv@v3
 
+      - name: Install python-semantic-release
+        run: uv tool install python-semantic-release
+
       - name: Run python-semantic-release
-        run: uv run --only-dev semantic-release version --push --tag
+        run: semantic-release version --push --tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish GitHub Release
-        run: uv run --only-dev semantic-release publish
+        run: semantic-release publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
