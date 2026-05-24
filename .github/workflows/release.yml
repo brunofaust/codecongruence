@@ -24,7 +24,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
 
       - name: Install python-semantic-release
-        run: uv tool install python-semantic-release
+        run: uv tool install "python-semantic-release>=9,<10"
 
       - name: Run python-semantic-release
         run: semantic-release version --no-commit
