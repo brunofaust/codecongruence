@@ -247,7 +247,13 @@ major_on_zero = false
 commit_message = "chore(release): v{version} [skip ci]"
 changelog_file = "CHANGELOG.md"
 exclude_commit_patterns = [
-  "^chore\\(release\\)",
+  "^chore",
+  "^docs",
+  "^test",
+  "^build",
+  "^ci",
+  "^refactor",
+  "^style",
   "^Merge (pull request|branch)",
 ]
 upload_to_pypi = false
