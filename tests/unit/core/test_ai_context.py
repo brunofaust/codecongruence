@@ -22,7 +22,7 @@ def test_all_written_on_fresh_dir(tmp_path: Path) -> None:
 def test_claude_skill_path(tmp_path: Path) -> None:
     result = write_ai_context_files(tmp_path)
     paths = [p for p, _ in result]
-    assert any(str(p).endswith(".claude/skills/codecongruence.md") for p in paths)
+    assert any(str(p).endswith("claude/skills/codecongruence.md") for p in paths)
 
 
 def test_cursor_rule_path(tmp_path: Path) -> None:
@@ -57,13 +57,13 @@ def test_force_overwrites(tmp_path: Path) -> None:
 
 def test_parent_dirs_created(tmp_path: Path) -> None:
     write_ai_context_files(tmp_path)
-    assert (tmp_path / ".claude" / "skills").is_dir()
+    assert (tmp_path / "claude" / "skills").is_dir()
     assert (tmp_path / ".cursor" / "rules").is_dir()
 
 
 def test_claude_skill_has_frontmatter(tmp_path: Path) -> None:
     write_ai_context_files(tmp_path)
-    content = (tmp_path / ".claude" / "skills" / "codecongruence.md").read_text()
+    content = (tmp_path / "claude" / "skills" / "codecongruence.md").read_text()
     assert content.startswith("---")
     assert "name: codecongruence" in content
 
@@ -99,32 +99,23 @@ def test_agents_md_not_duplicated(tmp_path: Path) -> None:
 
 
 def test_agents_md_force_replaces_section(tmp_path: Path) -> None:
-    write_ai_context_files(tmp_path)
-    agents = tmp_path / "AGENTS.md"
-    agents.write_text(agents.read_text() + "\n## codecongruence\n\nDEADBEEF_REPLACED_CONTENT\n")
-    # Now force-write to replace
     (tmp_path / "AGENTS.md").write_text("## codecongruence\n\nDEADBEEF_REPLACED_CONTENT\n")
     write_ai_context_files(tmp_path, force=True)
-    content = agents.read_text()
+    content = (tmp_path / "AGENTS.md").read_text()
     assert "DEADBEEF_REPLACED_CONTENT" not in content
 
 
-def test_all_files_mention_all_rule_codes(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "code",
+    ["C001", "C002", "C003", "D001", "D002", "D003", "D004", "D005", "D006"],
+)
+def test_rule_codes_in_all_files(tmp_path: Path, code: str) -> None:
     write_ai_context_files(tmp_path)
-    codes = ["C001", "C002", "D001", "D002", "D003", "D004", "D005", "D006"]
     files_to_check = [
-        tmp_path / ".claude" / "skills" / "codecongruence.md",
+        tmp_path / "claude" / "skills" / "codecongruence.md",
         tmp_path / ".cursor" / "rules" / "codecongruence.mdc",
         tmp_path / "AGENTS.md",
     ]
     for fpath in files_to_check:
         content = fpath.read_text()
-        for code in codes:
-            assert code in content, f"{code} missing from {fpath.name}"
-
-
-@pytest.mark.parametrize("code", ["C001", "C002", "D001", "D002", "D003", "D004", "D005", "D006"])
-def test_rule_codes_in_claude_skill(tmp_path: Path, code: str) -> None:
-    write_ai_context_files(tmp_path)
-    content = (tmp_path / ".claude" / "skills" / "codecongruence.md").read_text()
-    assert code in content
+        assert code in content, f"{code} missing from {fpath.name}"

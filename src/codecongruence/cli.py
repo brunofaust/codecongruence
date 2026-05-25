@@ -165,7 +165,7 @@ def main(
             "--update-baseline",
             help=(
                 "Save all current violations as the new baseline and exit 0. "
-                "Commit .codecongruence-baseline.json to share with the team."
+                "Commit .codecongruence/.codecongruence-baseline.json to share with the team."
             ),
         ),
     ] = False,
@@ -239,10 +239,11 @@ def init_cmd(
 ) -> None:
     """Write a default ``codecongruence.toml`` and warm up the embedding model.
 
-    Also writes AI-tool context files so Claude Code, Cursor, and OpenAI
-    Codex know how to interpret and fix codecongruence violations:
+    Also installs AI-tool context files from the bundled ``agents/`` directory
+    so Claude Code, Cursor, and OpenAI Codex know how to interpret and fix
+    codecongruence violations:
 
-    - ``.claude/skills/codecongruence.md``
+    - ``claude/skills/codecongruence.md``
     - ``.cursor/rules/codecongruence.mdc``
     - ``AGENTS.md`` (section appended or file created)
 
@@ -397,7 +398,7 @@ async def _run(
         )
         if result.violations:
             typer.echo(
-                "Commit .codecongruence-baseline.json to share across the team. "
+                "Commit .codecongruence/.codecongruence-baseline.json to share across the team. "
                 "Future runs will only fail on new violations."
             )
         return 0

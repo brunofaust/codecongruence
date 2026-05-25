@@ -20,7 +20,7 @@
       (tree-sitter-javascript + tree-sitter-typescript; JSDoc as docstring).
 - [x] AST cache shared across rules to avoid double-parsing (in-memory, per-run).
 - [x] Persist embeddings across runs (always-on JSON cache in `cache_dir`).
-- [ ] `--baseline` mode: write current scores to a JSON file, fail only on
+- [x] `--baseline` mode: write current scores to a JSON file, fail only on
       regressions.
 - [x] `pyproject.toml` `[tool.codecongruence]` section as an alternative to
       `codecongruence.toml`.

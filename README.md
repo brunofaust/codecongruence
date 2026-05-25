@@ -4,7 +4,7 @@ Semantic pre-commit hook framework. Detects drift between code and surrounding a
 
 ## Features
 
-- **8 drift detection rules** — function names vs implementation, docstrings vs behavior, stale comments, missing docs, PR description alignment
+- **9 drift detection rules** — function names vs implementation, duplicate logic, docstrings vs behavior, stale comments, missing docs, PR description alignment
 - **Zero external dependencies** — ONNX-based `fastembed` (no PyTorch, no API calls)
 - **Offline embeddings** — sentence embeddings run locally on your machine
 - **Embedding cache** — persistent per-model cache with TTL-based garbage collection
@@ -25,18 +25,21 @@ uv pip install codecongruence
 
 ## AI context files
 
-`codecongruence init` also writes AI-tool context files so your AI coding
-assistant understands every rule and fix strategy without needing to read the
-docs separately:
+`codecongruence init` installs AI-tool context files from the bundled `agents/`
+directory so your AI assistant understands every rule and fix strategy without
+needing to read the docs separately:
 
-| File                               | Tool                                                     |
+| Installed to                       | Tool                                                     |
 | ---------------------------------- | -------------------------------------------------------- |
-| `.claude/skills/codecongruence.md` | Claude Code (Anthropic) — loaded as a skill              |
+| `claude/skills/codecongruence.md`  | Claude Code (Anthropic) — loaded as a skill              |
 | `.cursor/rules/codecongruence.mdc` | Cursor — applied when editing `.py` or `.md` files       |
 | `AGENTS.md`                        | OpenAI Codex — section appended (file created if absent) |
 
-These files are skipped if they already exist. Pass `--force` to overwrite.
-Add them to git so every contributor's AI assistant has the context.
+Files are skipped if they already exist. Pass `--force` to overwrite.
+Commit them to git so every contributor's AI assistant has the context.
+
+The template sources live in [`src/codecongruence/agents/`](src/codecongruence/agents/) — browse them to see exactly what gets installed.
+Agent template files use YAML frontmatter (`---` delimiters) for metadata and are protected from markdown formatters to preserve their structure.
 
 ## Rules
 
@@ -47,6 +50,7 @@ Each rule has a stable short **code** (`C00x` = code-identifier drift,
 | -------- | ------------------------ | ---------------------------------------------------------------------------- | ----------------- |
 | **C001** | `name_vs_body`           | `get_user()` that deletes, `validate_email()` that sends email               | 0.25              |
 | **C002** | `param_name_vs_usage`    | Parameter name clashes with how the parameter is used in the body            | 0.20              |
+| **C003** | `duplicate_functions`    | Two functions with similar names and near-identical bodies                   | 0.92              |
 | **D001** | `docstring_vs_body`      | Docstring describes one thing, function body does another                    | 0.30              |
 | **D002** | `stale_comments`         | Comment describes behavior the code no longer has                            | 0.20              |
 | **D003** | `claude_md_vs_diff`      | Unrelated one-line CLAUDE.md tweak buried under a 10k-LOC code change        | 0.20              |
@@ -100,10 +104,10 @@ be overwhelming. The baseline feature lets you adopt it gradually — only fail 
 
 ```bash
 # 1. Run once to capture every existing violation.
-codecongruence --update-baseline        # saves .codecongruence-baseline.json
+codecongruence --update-baseline        # saves .codecongruence/.codecongruence-baseline.json
 
 # 2. Commit the baseline alongside your code.
-git add .codecongruence-baseline.json
+git add .codecongruence/.codecongruence-baseline.json
 git commit -m "chore: add codecongruence baseline"
 
 # 3. From now on, every run silently ignores baseline violations.
@@ -112,14 +116,13 @@ codecongruence
 
 # 4. When you've fixed a batch of violations, refresh the baseline.
 codecongruence --update-baseline
-git add .codecongruence-baseline.json
+git add .codecongruence/.codecongruence-baseline.json
 git commit -m "chore: shrink codecongruence baseline"
 ```
 
 The baseline file stores violations by `(rule_id, file_path, line)`. Moving a
 function to a different line makes the entry stale — it falls off automatically
 on the next `--update-baseline`.
-
 
 ## Configuration
 
@@ -143,22 +146,23 @@ Embeddings are cached in `.codecongruence/embeddings.npz` (model-specific, conte
 Two GC mechanisms:
 
 1. **TTL eviction** — entries not accessed within `cache_ttl_days` (default: 30) are discarded on load
-2. **Compaction** — `compact()` called after `--all` removes embeddings for texts no longer in the repo
+1. **Compaction** — `compact()` called after `--all` removes embeddings for texts no longer in the repo
 
 To disable TTL, set `cache_ttl_days = 0`.
 
 ## Rules
 
-| Code | Rule | Detects |
-|------|------|---------|
-| C001 | name_vs_body | Function name doesn't match implementation |
-| C002 | param_name_vs_usage | Parameter names not used in docstring |
-| D001 | docstring_vs_body | Docstring doesn't describe actual behavior |
-| D002 | stale_comments | Comments contradict code |
-| D003 | claude_md_vs_diff | CLAUDE.md out of sync with code changes |
-| D004 | pr_description_vs_diff | PR description misaligned with diff |
-| D005 | docs_on_change | Code changed but docs weren't updated |
-| D006 | params_in_docstring | Function params missing from docstring |
+| Code | Rule                   | Detects                                                    |
+| ---- | ---------------------- | ---------------------------------------------------------- |
+| C001 | name_vs_body           | Function name doesn't match implementation                 |
+| C002 | param_name_vs_usage    | Parameter names not used in docstring                      |
+| C003 | duplicate_functions    | Two functions with similar names and near-identical bodies |
+| D001 | docstring_vs_body      | Docstring doesn't describe actual behavior                 |
+| D002 | stale_comments         | Comments contradict code                                   |
+| D003 | claude_md_vs_diff      | CLAUDE.md out of sync with code changes                    |
+| D004 | pr_description_vs_diff | PR description misaligned with diff                        |
+| D005 | docs_on_change         | Code changed but docs weren't updated                      |
+| D006 | params_in_docstring    | Function params missing from docstring                     |
 
 - **CoCC** (Liu et al., 2024, [arXiv 2403.00251](https://arxiv.org/abs/2403.00251)) — detected outdated comments in 22 Java projects with >90% precision; extended to Python with similar results.
 - **Co3D** (EASE 2024, [arXiv 2405.16272](https://arxiv.org/abs/2405.16272)) — word2vec + LSTM beat heavier pre-trained baselines for code–comment coherence.
@@ -195,7 +199,7 @@ codecongruence (CLI)
         ▼                                              ▼
    RunResult ──► apply_baseline (optional) ──► TextReporter / JsonReporter
                         │
-                 .codecongruence-baseline.json  (committed to git)
+                 .codecongruence/.codecongruence-baseline.json  (committed to git)
 ```
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for details.

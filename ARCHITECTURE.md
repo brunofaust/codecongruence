@@ -27,15 +27,16 @@
            │                                │
            ▼                                ▼
 ┌─────────────────────────┐    ┌────────────────────────────┐
-│ Embedder (single load,  │    │ Rules (8×)                 │
+│ Embedder (single load,  │    │ Rules (9×)                 │
 │ ONNX, content-cached)   │    │  name_vs_body        C001  │
 │       core/embedder.py  │    │  param_name_vs_usage C002  │
-└─────────────────────────┘    │  docstring_vs_body   D001  │
-                               │  stale_comments      D002  │
-┌─────────────────────────┐    │  claude_md_vs_diff   D003  │
-│ Git helpers (async)     │    │  pr_description_…    D004  │
-│       core/git.py       │    │  docs_on_change      D005  │
-└─────────────────────────┘    │  params_in_docstring D006  │
+└─────────────────────────┘    │  duplicate_functions C003  │
+                               │  docstring_vs_body   D001  │
+┌─────────────────────────┐    │  stale_comments      D002  │
+│ Git helpers (async)     │    │  claude_md_vs_diff   D003  │
+│       core/git.py       │    │  pr_description_…    D004  │
+└─────────────────────────┘    │  docs_on_change      D005  │
+                               │  params_in_docstring D006  │
                                │  rules/*.py                │
                                └────────────────────────────┘
 
@@ -100,12 +101,11 @@ not what I set?".
 
 ### AI context writer (`core/ai_context.py`)
 
-`write_ai_context_files(repo_root, *, force)` is called by `codecongruence init`. It writes three files that teach AI coding assistants (Claude Code,
-Cursor, OpenAI Codex) about every rule and fix strategy:
+`write_ai_context_files(repo_root, *, force)` is called by `codecongruence init`. It reads templates from the bundled `src/codecongruence/agents/` directory (via `importlib.resources`) and writes them to the user's repo:
 
-- `.claude/skills/codecongruence.md` — Claude Code skill (YAML frontmatter)
+- `claude/skills/codecongruence.md` — Claude Code skill (YAML frontmatter)
 - `.cursor/rules/codecongruence.mdc` — Cursor MDC rule with glob triggers
-- `AGENTS.md` — appended section (created if the file does not exist)
+- `AGENTS.md` — OpenAI Codex section (appended or created)
 
 Files are never overwritten unless `force=True`. Returns
 `list[tuple[Path, bool]]` — one per file, where the bool indicates whether
@@ -156,8 +156,8 @@ Exit code is `0` if no `error`-severity violations, else `1`.
 - One model load per CLI invocation (`Embedder._ensure_backend()` is lazy).
 - Content-hash cache prevents re-embedding identical inputs across rules.
 - Parallel rule execution by default (`asyncio.TaskGroup`).
-- AST parse is done once per file per rule; we could memoise across rules
-    later if profiling justifies it.
+- AST parse results are cached in-memory and shared across rules within a run
+    (no redundant re-parsing of the same file).
 
 ## Test strategy
 

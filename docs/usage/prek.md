@@ -1,20 +1,16 @@
-# Using codecongruence with [prek](https://github.com/j178/prek)
+# Using codecongruence with [prek](https://prek.dev)
 
-`prek` is a fast Rust re-implementation of `pre-commit`'s runner. It reads the
-exact same `.pre-commit-config.yaml` + `.pre-commit-hooks.yaml`, so the setup
-is identical to the [pre-commit guide](pre-commit.md).
+`prek` is a hook runner that reads the same `.pre-commit-hooks.yaml` format as
+`pre-commit` but also supports a single TOML config — `prek.toml` — which is
+the preferred idiom for new projects (no per-hook YAML noise).
 
 > The codecongruence repo itself uses `prek` with a single TOML config —
-> [`prek.toml`](../../prek.toml) at the repo root. That file is the modern
-> idiom (one TOML for everything, no per-hook YAML noise) and is preferred
-> over the legacy `.pre-commit-config.yaml` for new projects.
+> [`prek.toml`](../../prek.toml) at the repo root.
 
 ## 1. Install prek
 
 ```bash
-brew install j178/tap/prek      # macOS
-# or
-cargo install prek              # any platform with Rust
+uv tool install prek
 ```
 
 ## 2. Add codecongruence to `.pre-commit-config.yaml`

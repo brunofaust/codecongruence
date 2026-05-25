@@ -1,4 +1,5 @@
 .codecongruence
+!.codecongruence/.codecongruence-baseline.json
 .claude/worktrees
 
 # Byte-compiled / optimized / DLL files

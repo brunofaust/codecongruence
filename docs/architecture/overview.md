@@ -12,5 +12,5 @@ We will add the following pages as the codebase grows:
     invalidation strategy.
 - `diff-awareness.md` — exactly how `--cached --unified=0` is parsed into
     `ChangedFile.added_ranges` and how rules intersect those with AST ranges.
-- `extensibility.md` — entry-point plugin design once the v0.2 plugin system
-    lands.
+- `extensibility.md` — entry-point plugin design once the v0.3 plugin system
+    (`codecongruence.plugins` entry-point group) lands.

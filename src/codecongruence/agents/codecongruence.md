@@ -1,10 +1,10 @@
 ---
 name: codecongruence
 description: >
-  Use when codecongruence pre-commit violations appear. codecongruence
-  detects semantic drift between code and its surrounding text artifacts
-  (docstrings, comments, function names, CLAUDE.md, CHANGELOG). Apply
-  this skill to understand what each rule checks and how to fix violations.
+  Use when codecongruence pre-commit violations appear. codecongruence detects
+  semantic drift between code and its surrounding text artifacts (docstrings,
+  comments, function names, CLAUDE.md, CHANGELOG). Apply this skill to
+  understand what each rule checks and how to fix violations.
 ---
 
 # codecongruence — semantic drift checker
@@ -17,21 +17,23 @@ a docstring that describes the behaviour before a recent refactor.
 
 ## Rules
 
-| Code | Rule                     | What it catches                                               |
-|------|--------------------------|---------------------------------------------------------------|
-| C001 | `name_vs_body`           | Function name contradicts what the body actually does         |
-| C002 | `param_name_vs_usage`    | Parameter name clashes with how it is used in the body        |
-| D001 | `docstring_vs_body`      | Docstring describes stale behaviour after a refactor          |
-| D002 | `stale_comments`         | Inline comment describes behaviour the code no longer has     |
-| D003 | `claude_md_vs_diff`      | Unrelated CLAUDE.md edit buried inside a large code change    |
-| D004 | `pr_description_vs_diff` | PR description does not match the actual diff (CI-only)       |
-| D005 | `docs_on_change`         | `src/` changed but no docs file updated (CHANGELOG, README…)  |
-| D006 | `params_in_docstring`    | Docstring exists but a parameter is not documented in it      |
+| Code | Rule                     | What it catches                                              |
+| ---- | ------------------------ | ------------------------------------------------------------ |
+| C001 | `name_vs_body`           | Function name contradicts what the body actually does        |
+| C002 | `param_name_vs_usage`    | Parameter name clashes with how it is used in the body       |
+| C003 | `duplicate_functions`    | Two functions with similar names and near-identical bodies   |
+| D001 | `docstring_vs_body`      | Docstring describes stale behaviour after a refactor         |
+| D002 | `stale_comments`         | Inline comment describes behaviour the code no longer has    |
+| D003 | `claude_md_vs_diff`      | Unrelated CLAUDE.md edit buried inside a large code change   |
+| D004 | `pr_description_vs_diff` | PR description does not match the actual diff (CI-only)      |
+| D005 | `docs_on_change`         | `src/` changed but no docs file updated (CHANGELOG, README…) |
+| D006 | `params_in_docstring`    | Docstring exists but a parameter is not documented in it     |
 
 ### Fix strategies
 
 - **C001** — rename the function to match what it does, OR rewrite the body to match the declared intent.
 - **C002** — rename the parameter to reflect its actual role in the body, OR restructure the usage.
+- **C003** — merge the duplicate into one function (add a parameter if behavior varies), OR rename them to make their distinct roles explicit.
 - **D001** — update the docstring to describe what the function currently does.
 - **D002** — delete the stale comment or rewrite it to describe the current behaviour.
 - **D003** — split the commit (CLAUDE.md change alone), or expand CLAUDE.md to actually document the code change.
@@ -71,4 +73,3 @@ threshold = 0.30        # raise to 0.40 if too noisy on short functions
 threshold = 0.25
 ignore_names = ["main", "run", "setup"]  # skip these names entirely
 ```
-

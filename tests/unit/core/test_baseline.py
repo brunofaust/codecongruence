@@ -100,7 +100,7 @@ def test_is_suppressed_true_for_none_line_violation() -> None:
 
 def test_save_creates_file(tmp_path: Path) -> None:
     v = _violation()
-    path = tmp_path / ".codecongruence-baseline.json"
+    path = tmp_path / ".codecongruence" / ".codecongruence-baseline.json"
     save_baseline([v], path)
     assert path.exists()
 
@@ -108,7 +108,7 @@ def test_save_creates_file(tmp_path: Path) -> None:
 def test_save_roundtrip(tmp_path: Path) -> None:
     v1 = _violation(rule_id="c001", file_path="a.py", line=5)
     v2 = _violation(rule_id="d001", file_path="b.py", line=None)
-    path = tmp_path / ".codecongruence-baseline.json"
+    path = tmp_path / ".codecongruence" / ".codecongruence-baseline.json"
     save_baseline([v1, v2], path)
 
     bl = load_baseline(path)
@@ -201,6 +201,6 @@ def test_apply_baseline_returns_suppressed_count() -> None:
 # ── baseline_path ─────────────────────────────────────────────────────────────
 
 
-def test_baseline_path_is_in_repo_root(tmp_path: Path) -> None:
+def test_baseline_path_is_in_codecongruence_dir(tmp_path: Path) -> None:
     p = baseline_path(tmp_path)
-    assert p == tmp_path / ".codecongruence-baseline.json"
+    assert p == tmp_path / ".codecongruence" / ".codecongruence-baseline.json"

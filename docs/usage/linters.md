@@ -53,7 +53,7 @@ hooks and report failures from each.
 ### Frontend (React / Next.js / TS)
 
 `biome` (or `eslint` + `prettier`) + `tsc --noEmit` + `codecongruence`
-(once v0.2 ships JS/TS support).
+(JS/TS support shipped in v0.2 — `name_vs_body`, `stale_comments`, `docstring_vs_body` via JSDoc).
 
 ### Strict (regulated / large repos)
 

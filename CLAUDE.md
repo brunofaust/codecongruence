@@ -11,7 +11,7 @@ CLAUDE.md, PR descriptions, CHANGELOG) using **local** sentence embeddings via
 
 ## Conventions
 
-- **Python 3.12+** syntax. Async-first where I/O happens. `asyncio.TaskGroup`
+- **Python 3.11+** syntax. Async-first where I/O happens. `asyncio.TaskGroup`
     for parallel rules; never `gather` without a TaskGroup.
 - **Type hints on everything.** `mypy --strict` must pass.
 - **Frozen dataclasses** for internal data structures.
@@ -111,14 +111,17 @@ The repo runs `codecongruence` on itself in CI. Any PR must:
 - Update docs (this file, `ARCHITECTURE.md`, `README.md`) when the change
     affects architecture or public API.
 
+See [`src/codecongruence/agents/codecongruence.md`](src/codecongruence/agents/codecongruence.md) for per-rule violation fix strategies. `codecongruence init` installs these to the standard locations for Claude Code, Cursor, and Codex.
+
+**Worktrees:** parallel sessions use `.worktrees/<branch>/` — created automatically
+by the global worktree convention.
+
 ## Local commands
 
 ```bash
 uv sync --extra dev
 uv run pytest                       # ~100 tests, <2s
-uv run ruff check src tests
-uv run ruff format src tests
-uv run mypy
+uv run prek run --all-files         # full quality gate (ruff, mypy, markdownlint, …)
 uv run codecongruence --all         # full-repo self check
 ```
 

@@ -108,7 +108,7 @@ def test_update_baseline_creates_file(repo_with_d005_violation: Path, runner: Cl
         os.chdir(cwd)
 
     assert result.exit_code == 0
-    assert (repo_with_d005_violation / ".codecongruence-baseline.json").exists()
+    assert (repo_with_d005_violation / ".codecongruence" / ".codecongruence-baseline.json").exists()
 
 
 def test_update_baseline_exits_zero_even_with_violations(
@@ -134,7 +134,9 @@ def test_update_baseline_saves_violation_count(
     finally:
         os.chdir(cwd)
 
-    data = json.loads((repo_with_d005_violation / ".codecongruence-baseline.json").read_text())
+    data = json.loads(
+        (repo_with_d005_violation / ".codecongruence" / ".codecongruence-baseline.json").read_text()
+    )
     assert len(data["violations"]) == 1
     assert data["violations"][0]["rule_id"] == "docs_on_change"
 
@@ -211,5 +213,5 @@ def test_update_baseline_on_clean_repo_creates_empty_file(
         os.chdir(cwd)
 
     assert result.exit_code == 0
-    data = json.loads((tmp_path / ".codecongruence-baseline.json").read_text())
+    data = json.loads((tmp_path / ".codecongruence" / ".codecongruence-baseline.json").read_text())
     assert data["violations"] == []
