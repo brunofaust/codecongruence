@@ -92,10 +92,16 @@ Common types and their version impact:
 The `commitizen` prek hook validates the format on every commit. If your
 commit message is rejected, rewrite it with `git commit --amend`.
 
-Releases are fully automated: `python-semantic-release` reads commit history
-on merge to `main`, bumps `pyproject.toml`, writes `CHANGELOG.md`, and
-creates a GitHub release + git tag. **Do not bump the version or edit
-`CHANGELOG.md` manually.**
+Releases are triggered by merging a `release/` branch into `main`:
+
+1. Merge feature PRs to `main` normally — no release is created.
+1. When ready to release, create a branch named `release/x.y.z` off `main`
+    (no content changes required) and open a PR to `main`.
+1. Merging that PR triggers `python-semantic-release`, which reads all
+    conventional commits since the last tag, bumps `pyproject.toml`,
+    writes `CHANGELOG.md`, and creates a GitHub release + git tag.
+
+**Do not bump the version or edit `CHANGELOG.md` manually.**
 
 ## Eat own dogfood
 
