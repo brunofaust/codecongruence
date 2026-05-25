@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Embedder cache format changed from `embeddings.json.gz` to `embeddings.npz`
+    (NumPy compressed binary). Binary float32 storage is ~2-3× smaller and
+    faster to load than JSON-encoded floats. Existing `embeddings.json.gz`
+    files are ignored on first run; the cache rebuilds automatically.
+
 - Automated release pipeline: `python-semantic-release` runs on push to main,
     reads conventional commits, bumps `pyproject.toml`, writes `CHANGELOG.md`,
     and creates a GitHub release + git tag. No manual version bumps or CHANGELOG

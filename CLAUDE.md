@@ -26,8 +26,13 @@ CLAUDE.md, PR descriptions, CHANGELOG) using **local** sentence embeddings via
 ## Architecture (one paragraph)
 
 `cli.py` → `load_config()` → `Embedder` (one instance per run, content-hash
-cached) → `RuleRunner` (uses `asyncio.TaskGroup`) → each `Rule` returns a
-`Sequence[RuleViolation]` → reporter prints text or JSON.
+cached in `.codecongruence/embeddings.npz`) → `RuleRunner` (uses
+`asyncio.TaskGroup`) → each `Rule` returns a `Sequence[RuleViolation]` →
+reporter prints text or JSON.
+
+Cache key = `blake2b(text)` of the exact string passed to `embed()`. Rules
+that strip comments pass a different string → different hash → separate cache
+entry. No rule metadata in the key.
 
 Each rule lives in its own **code-named subfolder** under
 `src/codecongruence/rules/`. Example: `C001_name_vs_body/rule.py`. The

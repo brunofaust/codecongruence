@@ -11,7 +11,7 @@ async def test_cache_persists_to_disk(tmp_path: Path) -> None:
     cache_dir = tmp_path / ".codecongruence-cache"
     e = Embedder(model_name="fake", backend=backend, cache_dir=cache_dir)
     _ = await e.similarity("hello world", "world hello")
-    assert (cache_dir / "embeddings.json.gz").exists()
+    assert (cache_dir / "embeddings.npz").exists()
 
 
 async def test_cache_loads_from_disk(tmp_path: Path) -> None:

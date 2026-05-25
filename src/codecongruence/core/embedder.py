@@ -8,9 +8,7 @@ process. ONNX-based fastembed avoids the PyTorch dependency entirely.
 from __future__ import annotations
 
 import asyncio
-import gzip
 import hashlib
-import json
 import logging
 import threading
 from typing import TYPE_CHECKING, Protocol, cast
@@ -41,7 +39,7 @@ def _hash(text: str) -> str:
     return hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
 
 
-_CACHE_FILE = "embeddings.json.gz"
+_CACHE_FILE = "embeddings.npz"
 
 
 class Embedder:
@@ -54,7 +52,7 @@ class Embedder:
         model_name: fastembed model identifier.
         backend: Override the fastembed backend (used in tests).
         cache_dir: Directory for the per-run vector cache
-            (``<cache_dir>/embeddings.json.gz``). Keyed by content-hash +
+            (``<cache_dir>/embeddings.npz``). Keyed by content-hash +
             model name; stale entries from a different model are discarded.
         model_cache_dir: Directory where fastembed stores downloaded model
             weights. Defaults to the fastembed system default (temp dir).
@@ -92,24 +90,32 @@ class Embedder:
         if not path.exists():
             return
         try:
-            with gzip.open(path, "rb") as fh:
-                data: dict[str, object] = json.loads(fh.read())
-            if data.get("model") != self.model_name:
+            data = np.load(path)
+            if str(data["model"]) != self.model_name:
                 return  # different model — discard stale cache
-            for key, vec in cast("dict[str, object]", data.get("embeddings", {})).items():
-                self._cache[key] = np.array(vec, dtype=np.float32)
-        except (OSError, json.JSONDecodeError, ValueError):
+            hashes: list[str] = data["hashes"].tolist()
+            matrix: NDArray[np.float32] = data["matrix"]
+            self._cache = dict(zip(hashes, matrix, strict=True))
+        except (OSError, ValueError, KeyError):
             log.debug("could not load embedding cache from %s", path)
 
     def _save_disk_cache(self, cache_dir: Path) -> None:
+        if not self._cache:
+            return
+        hashes = list(self._cache.keys())
+        vecs = list(self._cache.values())
+        max_dim = max(int(v.shape[0]) for v in vecs)
+        matrix = np.zeros((len(vecs), max_dim), dtype=np.float32)
+        for i, v in enumerate(vecs):
+            matrix[i, : int(v.shape[0])] = v
         try:
             cache_dir.mkdir(parents=True, exist_ok=True)
-            payload = {
-                "model": self.model_name,
-                "embeddings": {k: v.tolist() for k, v in self._cache.items()},
-            }
-            with gzip.open(self._cache_path(cache_dir), "wb") as fh:
-                fh.write(json.dumps(payload, separators=(",", ":")).encode())
+            np.savez_compressed(
+                self._cache_path(cache_dir),
+                model=np.array(self.model_name),
+                hashes=np.array(hashes),
+                matrix=matrix,
+            )
         except OSError:
             log.debug("could not persist embedding cache to %s", cache_dir)
 
