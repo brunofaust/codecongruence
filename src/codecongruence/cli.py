@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 from codecongruence import __version__
+from codecongruence.core.baseline import apply_baseline, baseline_path, load_baseline, save_baseline
 from codecongruence.core.config import default_config_path, load_config
 from codecongruence.core.embedder import Embedder
 from codecongruence.core.git import current_repo_root
@@ -157,6 +158,16 @@ def main(
         bool,
         typer.Option("--include-unstaged", help="Also check unstaged changes."),
     ] = False,
+    update_baseline: Annotated[
+        bool,
+        typer.Option(
+            "--update-baseline",
+            help=(
+                "Save all current violations as the new baseline and exit 0. "
+                "Commit .codecongruence-baseline.json to share with the team."
+            ),
+        ),
+    ] = False,
     debug: Annotated[
         bool,
         typer.Option(
@@ -199,6 +210,7 @@ def main(
             output_format=output_format,
             verbose=verbose,
             include_unstaged=include_unstaged,
+            update_baseline=update_baseline,
             debug=debug,
         )
     )
@@ -318,6 +330,7 @@ async def _run(
     output_format: OutputFormat,
     verbose: bool,
     include_unstaged: bool,
+    update_baseline: bool = False,
     debug: bool = False,
 ) -> int:
     if debug:
@@ -359,10 +372,36 @@ async def _run(
 
     embedder.save(force_cleanup=all_files)
 
+    if update_baseline:
+        bl_path = baseline_path(repo_root)
+        save_baseline(result.violations, bl_path)
+        typer.echo(
+            f"codecongruence: saved {len(result.violations)} violation(s) to "
+            f"{bl_path.relative_to(repo_root)}"
+        )
+        if result.violations:
+            typer.echo(
+                "Commit .codecongruence-baseline.json to share across the team. "
+                "Future runs will only fail on new violations."
+            )
+        return 0
+
+    bl = load_baseline(baseline_path(repo_root))
+    suppressed = 0
+    if bl is not None:
+        result, suppressed = apply_baseline(result, bl)
+
     if output_format is OutputFormat.json:
         JsonReporter().report(result)
     else:
         TextReporter(verbose=verbose).report(result)
+        if suppressed > 0:
+            from rich.console import Console  # noqa: PLC0415
+
+            Console().print(
+                f"[dim]{suppressed} violation(s) suppressed by baseline "
+                "(run --update-baseline to reset)[/dim]"
+            )
 
     return 0 if result.ok else 1
 
