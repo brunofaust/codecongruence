@@ -7,7 +7,7 @@ that were not in the baseline.
 Usage:
 
 1. ``codecongruence --update-baseline`` — run all rules, save all findings to
-   ``.codecongruence-baseline.json`` at the repo root, and exit 0.  Commit this
+   ``.codecongruence/.codecongruence-baseline.json``, and exit 0.  Commit this
    file so every team member shares the same baseline.
 2. Subsequent runs load the baseline automatically and suppress any violation
    that matches a saved entry.  Only *new* violations (not in the baseline) cause
@@ -88,7 +88,7 @@ def load_baseline(path: Path) -> Baseline | None:
     """Load a baseline from *path*, returning ``None`` when absent or unreadable.
 
     Args:
-        path: Path to a ``.codecongruence-baseline.json`` file.
+        path: Path to a ``.codecongruence/.codecongruence-baseline.json`` file.
 
     Returns:
         A :class:`Baseline` with the saved entries, or ``None`` if the file is
@@ -123,7 +123,7 @@ def save_baseline(violations: Sequence[RuleViolation], path: Path) -> None:
 
     Args:
         violations: All violations from the current run to save as accepted.
-        path: Destination path (usually ``<repo_root>/.codecongruence-baseline.json``).
+        path: Destination path (usually ``<repo_root>/.codecongruence/.codecongruence-baseline.json``).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -166,6 +166,6 @@ def baseline_path(repo_root: Path) -> Path:
         repo_root: Repository root directory.
 
     Returns:
-        ``<repo_root>/.codecongruence-baseline.json``
+        ``<repo_root>/.codecongruence/.codecongruence-baseline.json``
     """
-    return repo_root / _BASELINE_FILENAME
+    return repo_root / ".codecongruence" / _BASELINE_FILENAME

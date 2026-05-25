@@ -76,13 +76,17 @@ positive rate stays low.
 The defaults below are conservative starting points biased toward **low false
 positives** so the hook does not become annoying. Tune up over time.
 
-| Rule                     | Default | Rationale                                                                                                                            |
-| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `docstring_vs_body`      | 0.30    | bge-small cosine on aligned docstring/body pairs sits ~0.45-0.60; misaligned pairs cluster \<0.20. 0.30 leaves a comfortable buffer. |
-| `name_vs_body`           | 0.25    | Names are very short → low absolute cosine even when aligned. Pairs paraphrased names with body via abbreviation expansion.          |
-| `claude_md_vs_diff`      | 0.20    | Diffs include git markers + filenames that artificially boost similarity; lower threshold compensates.                               |
-| `pr_description_vs_diff` | 0.25    | Same dynamics as `claude_md_vs_diff`, slightly tighter because PR descriptions are usually higher-quality prose.                     |
-| `stale_comments`         | 0.20    | Inline comments are very short; aligned pairs sit ~0.30-0.50. 0.20 catches the egregious cases without flagging good code.           |
+| Rule                     | Default    | Rationale                                                                                                                            |
+| ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `docstring_vs_body`      | 0.30       | bge-small cosine on aligned docstring/body pairs sits ~0.45-0.60; misaligned pairs cluster \<0.20. 0.30 leaves a comfortable buffer. |
+| `name_vs_body`           | 0.25       | Names are very short → low absolute cosine even when aligned. Pairs paraphrased names with body via abbreviation expansion.          |
+| `param_name_vs_usage`    | 0.20       | Parameter names are often single words; threshold is intentionally low to avoid flagging common short-name conventions.              |
+| `duplicate_functions`    | 0.92       | High threshold — only flag near-identical bodies. Small structural differences (e.g. one extra guard) should not fire.               |
+| `claude_md_vs_diff`      | 0.20       | Diffs include git markers + filenames that artificially boost similarity; lower threshold compensates.                               |
+| `pr_description_vs_diff` | 0.25       | Same dynamics as `claude_md_vs_diff`, slightly tighter because PR descriptions are usually higher-quality prose.                     |
+| `stale_comments`         | 0.20       | Inline comments are very short; aligned pairs sit ~0.30-0.50. 0.20 catches the egregious cases without flagging good code.           |
+| `docs_on_change`         | 0.20       | Structural rule using file-level membership, not embedding cosine; threshold applies to the diff-vs-docs similarity signal.          |
+| `params_in_docstring`    | structural | No embedding threshold — checks whether each parameter name appears in the `Args:` section. Binary pass/fail.                        |
 
-A future v0.2 milestone is to validate these against the CoCC + LLM-judge
-labelled datasets.
+A future goal is to validate thresholds against the CoCC + LLM-judge labelled
+datasets to replace the current heuristic defaults with empirically-tuned values.

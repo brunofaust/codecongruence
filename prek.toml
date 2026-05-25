@@ -2,6 +2,8 @@ default_language_version.python = "3.11"
 
 exclude = { glob = [".claude/**", ".worktrees/**", ".git/**", "conftest.py", ".venv/**", ".mypy_cache/**", ".pytest_cache/**", ".ruff_cache/**"] }
 
+default_stages = ["pre-commit"]
+
 [[repos]]
 repo = "https://github.com/pre-commit/pre-commit-hooks"
 rev = "v6.0.0"
@@ -87,15 +89,15 @@ hooks = [
 ]
 
 [[repos]]
-repo = "https://github.com/pre-commit/mirrors-mypy"
-rev = "v1.16.0"
+repo = "local"
 hooks = [
   {
     id = "mypy",
     name = "🐍 python · Validate with Mypy",
+    language = "system",
+    entry = "uv run mypy",
     pass_filenames = false,
-    additional_dependencies = ["numpy"],
-    stages = ["push"]
+    stages = ["pre-push"]
   }
 ]
 

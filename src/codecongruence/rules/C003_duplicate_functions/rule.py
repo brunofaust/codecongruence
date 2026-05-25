@@ -43,6 +43,10 @@ class DuplicateFunctionsRule:
     code: str = "C003"
     description: str = "Two functions with different names have nearly identical bodies."
     default_threshold: float = 0.92
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/C003_duplicate_functions/README.md"
+    )
 
     async def check(
         self,

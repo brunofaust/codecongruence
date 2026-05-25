@@ -1,19 +1,18 @@
 ---
-name: codecongruence
-description: >
-  Use when codecongruence pre-commit violations appear. codecongruence
-  detects semantic drift between code and its surrounding text artifacts
-  (docstrings, comments, function names, CLAUDE.md, CHANGELOG). Apply
-  this skill to understand what each rule checks and how to fix violations.
+description: codecongruence semantic drift violations — how to interpret and fix each rule
+globs: ["**/*.py", "**/*.md"]
+alwaysApply: false
 ---
 
 # codecongruence — semantic drift checker
 
-codecongruence detects **semantic drift** between code and surrounding
-artifacts. It uses local sentence embeddings (ONNX, offline) — no API calls,
-no PyTorch. It is NOT a syntax linter; ruff/mypy catch syntax. This catches
-things they miss: a `validate_email()` that quietly started sending emails, or
-a docstring that describes the behaviour before a recent refactor.
+This repo runs [codecongruence](https://github.com/brunofaust/codecongruence)
+as a pre-commit hook. It detects **semantic drift** between code and surrounding
+artifacts (docstrings, comments, function names, CLAUDE.md, CHANGELOG) using
+local sentence embeddings — offline, no API calls.
+
+When you see a codecongruence violation in pre-commit output, apply the fix
+strategy below for that rule code.
 
 ## Rules
 
@@ -21,6 +20,7 @@ a docstring that describes the behaviour before a recent refactor.
 |------|--------------------------|---------------------------------------------------------------|
 | C001 | `name_vs_body`           | Function name contradicts what the body actually does         |
 | C002 | `param_name_vs_usage`    | Parameter name clashes with how it is used in the body        |
+| C003 | `duplicate_functions`    | Two functions with similar names and near-identical bodies    |
 | D001 | `docstring_vs_body`      | Docstring describes stale behaviour after a refactor          |
 | D002 | `stale_comments`         | Inline comment describes behaviour the code no longer has     |
 | D003 | `claude_md_vs_diff`      | Unrelated CLAUDE.md edit buried inside a large code change    |
@@ -32,6 +32,7 @@ a docstring that describes the behaviour before a recent refactor.
 
 - **C001** — rename the function to match what it does, OR rewrite the body to match the declared intent.
 - **C002** — rename the parameter to reflect its actual role in the body, OR restructure the usage.
+- **C003** — merge the duplicate into one function (add a parameter if behavior varies), OR rename them to make their distinct roles explicit.
 - **D001** — update the docstring to describe what the function currently does.
 - **D002** — delete the stale comment or rewrite it to describe the current behaviour.
 - **D003** — split the commit (CLAUDE.md change alone), or expand CLAUDE.md to actually document the code change.
@@ -51,15 +52,6 @@ Fields: `file:line  CODE  rule_id  similarity=<score> < <threshold>`
 Lower similarity = more drift. Threshold is configurable per rule in
 `codecongruence.toml` or `pyproject.toml [tool.codecongruence]`.
 
-## Commands
-
-```bash
-codecongruence              # check staged changes (runs on git commit)
-codecongruence --all        # scan whole repo without staging
-codecongruence --rule docstring_vs_body  # single rule
-codecongruence --format json             # machine-readable (CI)
-```
-
 ## Config tuning
 
 ```toml
@@ -71,4 +63,3 @@ threshold = 0.30        # raise to 0.40 if too noisy on short functions
 threshold = 0.25
 ignore_names = ["main", "run", "setup"]  # skip these names entirely
 ```
-

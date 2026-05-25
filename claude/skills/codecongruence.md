@@ -1,12 +1,14 @@
-## codecongruence
+______________________________________________________________________
 
-This repository uses [codecongruence](https://github.com/brunofaust/codecongruence)
-as a pre-commit hook to detect **semantic drift** between code and surrounding
-text artifacts (docstrings, comments, function names, CLAUDE.md, CHANGELOG).
-It uses local sentence embeddings (ONNX, offline) — no API calls, no PyTorch.
+## name: codecongruence description: > Use when codecongruence pre-commit violations appear. codecongruence detects semantic drift between code and its surrounding text artifacts (docstrings, comments, function names, CLAUDE.md, CHANGELOG). Apply this skill to understand what each rule checks and how to fix violations.
 
-When you see a codecongruence violation, read the rule code and apply the
-matching fix strategy below.
+# codecongruence — semantic drift checker
+
+codecongruence detects **semantic drift** between code and surrounding
+artifacts. It uses local sentence embeddings (ONNX, offline) — no API calls,
+no PyTorch. It is NOT a syntax linter; ruff/mypy catch syntax. This catches
+things they miss: a `validate_email()` that quietly started sending emails, or
+a docstring that describes the behaviour before a recent refactor.
 
 ## Rules
 
