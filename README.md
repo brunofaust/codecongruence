@@ -19,7 +19,58 @@ pip install codecongruence
 uv pip install codecongruence
 ```
 
-## Quick Start
+> **Default mode checks only staged files.** If nothing is staged (`git add`),
+> the tool prints a warning and exits cleanly — it does not scan the whole repo.
+> Use `--all` for ad-hoc whole-repo scans.
+
+## AI context files
+
+`codecongruence init` also writes AI-tool context files so your AI coding
+assistant understands every rule and fix strategy without needing to read the
+docs separately:
+
+| File                               | Tool                                                     |
+| ---------------------------------- | -------------------------------------------------------- |
+| `.claude/skills/codecongruence.md` | Claude Code (Anthropic) — loaded as a skill              |
+| `.cursor/rules/codecongruence.mdc` | Cursor — applied when editing `.py` or `.md` files       |
+| `AGENTS.md`                        | OpenAI Codex — section appended (file created if absent) |
+
+These files are skipped if they already exist. Pass `--force` to overwrite.
+Add them to git so every contributor's AI assistant has the context.
+
+## Rules
+
+Each rule has a stable short **code** (`C00x` = code-identifier drift,
+`D00x` = documentation / artifact drift) shown in reports and easy to grep.
+
+| Code     | Rule                     | What it catches                                                              | Default threshold |
+| -------- | ------------------------ | ---------------------------------------------------------------------------- | ----------------- |
+| **C001** | `name_vs_body`           | `get_user()` that deletes, `validate_email()` that sends email               | 0.25              |
+| **C002** | `param_name_vs_usage`    | Parameter name clashes with how the parameter is used in the body            | 0.20              |
+| **D001** | `docstring_vs_body`      | Docstring describes one thing, function body does another                    | 0.30              |
+| **D002** | `stale_comments`         | Comment describes behavior the code no longer has                            | 0.20              |
+| **D003** | `claude_md_vs_diff`      | Unrelated one-line CLAUDE.md tweak buried under a 10k-LOC code change        | 0.20              |
+| **D004** | `pr_description_vs_diff` | Lazy "fix bug" PR description on a 500-line change (CI-only)                 | 0.25              |
+| **D005** | `docs_on_change`         | `src/` changed but none of your docs files (CHANGELOG, README…) were updated | 0.20              |
+| **D006** | `params_in_docstring`    | Function has a docstring but a parameter isn't mentioned in it               | structural        |
+
+All rules are **diff-aware** by default — they only check things that touch the
+current staged diff (`git add` first). Pass `--all` to scan the whole repo
+without staging anything. If nothing is staged and `--all` is not given, the
+tool exits with a warning rather than silently succeeding.
+
+## Documentation
+
+- [CLI reference](docs/usage/cli.md) — every flag + JSON schema.
+- [Use with pre-commit](docs/usage/pre-commit.md)
+- [Use with prek](docs/usage/prek.md)
+- [Native git hook recipe](docs/usage/git-hook.md)
+- [Linter chain (ruff/mypy/eslint/codecongruence)](docs/usage/linters.md)
+- [Per-rule docs](docs/rules/)
+- [Research foundation](docs/research.md)
+- [Architecture](ARCHITECTURE.md)
+
+## CLI
 
 ```bash
 # Check all changed files (vs main)
@@ -36,7 +87,7 @@ codecongruence --verbose                # show violation table and OK line on su
 codecongruence --update-baseline        # save all current violations as the new baseline
 
 # --- setup ---
-codecongruence init                     # write a default codecongruence.toml
+codecongruence init                     # write codecongruence.toml + AI context files
 codecongruence --purge-models           # delete ~/.cache/codecongruence and exit
 codecongruence --version
 ```
@@ -68,6 +119,7 @@ git commit -m "chore: shrink codecongruence baseline"
 The baseline file stores violations by `(rule_id, file_path, line)`. Moving a
 function to a different line makes the entry stale — it falls off automatically
 on the next `--update-baseline`.
+
 
 ## Configuration
 

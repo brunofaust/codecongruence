@@ -98,6 +98,19 @@ option reference.
 `None` when defaults were used) — handy for debugging "why is this threshold
 not what I set?".
 
+### AI context writer (`core/ai_context.py`)
+
+`write_ai_context_files(repo_root, *, force)` is called by `codecongruence init`. It writes three files that teach AI coding assistants (Claude Code,
+Cursor, OpenAI Codex) about every rule and fix strategy:
+
+- `.claude/skills/codecongruence.md` — Claude Code skill (YAML frontmatter)
+- `.cursor/rules/codecongruence.mdc` — Cursor MDC rule with glob triggers
+- `AGENTS.md` — appended section (created if the file does not exist)
+
+Files are never overwritten unless `force=True`. Returns
+`list[tuple[Path, bool]]` — one per file, where the bool indicates whether
+the file was actually written.
+
 ### Git layer (`core/git.py`)
 
 All git calls go through `asyncio.subprocess`, never blocking. Functions

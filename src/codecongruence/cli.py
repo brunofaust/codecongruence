@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 from codecongruence import __version__
+from codecongruence.core.ai_context import write_ai_context_files
 from codecongruence.core.baseline import apply_baseline, baseline_path, load_baseline, save_baseline
 from codecongruence.core.config import default_config_path, load_config
 from codecongruence.core.embedder import Embedder
@@ -238,6 +239,13 @@ def init_cmd(
 ) -> None:
     """Write a default ``codecongruence.toml`` and warm up the embedding model.
 
+    Also writes AI-tool context files so Claude Code, Cursor, and OpenAI
+    Codex know how to interpret and fix codecongruence violations:
+
+    - ``.claude/skills/codecongruence.md``
+    - ``.cursor/rules/codecongruence.mdc``
+    - ``AGENTS.md`` (section appended or file created)
+
     By default this also downloads the embedding model and pre-embeds every
     tracked file so the first ``git commit`` check is instant. Use
     ``--no-download`` to skip both, or ``--no-embed`` to download the model
@@ -245,14 +253,15 @@ def init_cmd(
 
     Args:
         path: Output path for the config file (default: repo root).
-        force: If True, overwrite an existing config.
+        force: If True, overwrite an existing config and AI context files.
         no_download: Skip model download and pre-embedding entirely.
         no_embed: Download model but skip pre-embedding tracked files.
 
     Raises:
         Exit: With code ``1`` when a config already exists and ``--force`` was not passed.
     """
-    target = path or default_config_path(asyncio.run(current_repo_root()))
+    repo_root = asyncio.run(current_repo_root())
+    target = path or default_config_path(repo_root)
     if target.exists() and not force:
         typer.echo(f"refusing to overwrite {target} (pass --force)")
         raise typer.Exit(code=1)
@@ -260,6 +269,13 @@ def init_cmd(
     typer.echo(f"wrote {target}")
     if _ensure_gitignore_entry(target.parent):
         typer.echo("added .codecongruence to .gitignore")
+
+    for ai_path, written in write_ai_context_files(repo_root, force=force):
+        rel = ai_path.relative_to(repo_root) if ai_path.is_relative_to(repo_root) else ai_path
+        if written:
+            typer.echo(f"wrote {rel}")
+        else:
+            typer.echo(f"skipped {rel} (already exists; use --force to overwrite)")
 
     if no_download:
         return
