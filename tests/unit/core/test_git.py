@@ -13,7 +13,13 @@ from tests.conftest import base_git_env
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, env=base_git_env())
+    subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=base_git_env(),
+    )
 
 
 def test_no_git_returns_cwd(tmp_path: Path) -> None:
