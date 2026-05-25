@@ -183,7 +183,7 @@ class RuleRunner:
             )
         selected = self._select_rules(only)
 
-        results: list[Sequence[RuleViolation]] = []
+        rule_results: list[tuple[Rule, Sequence[RuleViolation]]] = []
         if self.config.parallel and selected:
             async with asyncio.TaskGroup() as group:
                 tasks = [
@@ -201,7 +201,7 @@ class RuleRunner:
                     )
                     for rule in selected
                 ]
-            results = [t.result() for t in tasks]
+            rule_results = list(zip(selected, (t.result() for t in tasks), strict=True))
         else:
             for rule in selected:
                 rule_cfg = self.config.rule(rule.rule_id)
@@ -209,11 +209,13 @@ class RuleRunner:
                     _apply_file_excludes(changed, rule_cfg.exclude),
                     rule_cfg.exclude_functions,
                 )
-                results.append(await rule.check(filtered, self.embedder, rule_cfg))
+                rule_results.append((rule, await rule.check(filtered, self.embedder, rule_cfg)))
 
         flat: list[RuleViolation] = []
-        for r in results:
-            flat.extend(r)
+        for rule, violations in rule_results:
+            url: str | None = getattr(rule, "docs_url", None)
+            for v in violations:
+                flat.append(dataclasses.replace(v, docs_url=url) if url is not None else v)
         flat.sort(key=lambda v: (v.file_path, v.line or 0, v.rule_id))
 
         return RunResult(

@@ -9,6 +9,7 @@ message instead of a stack trace.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -93,12 +94,27 @@ class ChangedFile:
 
 
 async def _run_git(*args: str, cwd: Path | None = None) -> str:
+    # Strip git hook env vars to prevent leakage (e.g., GIT_WORK_TREE from prek)
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k
+        not in {
+            "GIT_DIR",
+            "GIT_INDEX_FILE",
+            "GIT_WORK_TREE",
+            "GIT_PREFIX",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        }
+    }
     proc = await asyncio.create_subprocess_exec(
         "git",
         *args,
         cwd=str(cwd) if cwd else None,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=env,
     )
     stdout, _stderr = await proc.communicate()
     if proc.returncode != 0:

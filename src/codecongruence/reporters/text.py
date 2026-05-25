@@ -75,3 +75,14 @@ class TextReporter:
             f"[red]codecongruence: {len(result.violations)} violation(s)[/red] "
             f"across {len(result.files_checked)} file(s)."
         )
+
+        seen_codes: set[str] = set()
+        docs_lines: list[str] = []
+        for v in result.violations:
+            if v.docs_url is not None and v.code not in seen_codes:
+                seen_codes.add(v.code)
+                docs_lines.append(f"  [bold]{v.code}[/bold] → {v.docs_url}")
+        if docs_lines:
+            self.console.print("[dim]Rule documentation:[/dim]")
+            for line in docs_lines:
+                self.console.print(line)

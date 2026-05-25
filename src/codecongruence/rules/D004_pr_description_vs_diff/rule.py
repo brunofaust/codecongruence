@@ -27,6 +27,10 @@ class PrDescriptionVsDiffRule:
     code: str = "D004"
     description: str = "PR description should describe what the diff actually changes."
     default_threshold: float = 0.25
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/D004_pr_description_vs_diff/README.md"
+    )
 
     async def check(
         self,

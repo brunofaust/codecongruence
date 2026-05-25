@@ -37,6 +37,10 @@ class NameVsBodyRule:
     code: str = "C001"
     description: str = "Function/class name should align with what its body does."
     default_threshold: float = 0.25
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/C001_name_vs_body/README.md"
+    )
 
     async def check(
         self,

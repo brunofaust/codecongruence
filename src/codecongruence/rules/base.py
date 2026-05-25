@@ -13,7 +13,9 @@ if TYPE_CHECKING:
     from codecongruence.core.embedder import Embedder
     from codecongruence.core.git import ChangedFile
 
-__all__ = ["Rule", "RuleViolation", "Severity", "strip_comments"]
+__all__ = ["DOCS_BASE_URL", "Rule", "RuleViolation", "Severity", "strip_comments"]
+
+DOCS_BASE_URL = "https://github.com/brunofaust/codecongruence/blob/main/src/codecongruence/rules"
 
 # Matches inline and full-line comments for Python (#) and JS/TS (//).
 # (?<!:) preserves https:// URLs.
@@ -57,6 +59,7 @@ class RuleViolation:
     similarity: float
     threshold: float
     severity: Severity = "error"
+    docs_url: str | None = None
 
 
 @runtime_checkable
@@ -72,6 +75,7 @@ class Rule(Protocol):
     code: str
     description: str
     default_threshold: float
+    docs_url: str
 
     async def check(
         self,

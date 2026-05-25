@@ -28,6 +28,10 @@ class ClaudeMdVsDiffRule:
     code: str = "D003"
     description: str = "Code diff should be semantically aligned with the docs diff."
     default_threshold: float = 0.20
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/D003_claude_md_vs_diff/README.md"
+    )
 
     async def check(
         self,

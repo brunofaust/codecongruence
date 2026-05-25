@@ -11,6 +11,7 @@ import pytest
 
 from codecongruence.core.config import load_config
 from codecongruence.core.runner import RuleRunner
+from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 def _git(repo: Path, *args: str) -> None:
     env = {
-        **os.environ,
+        **base_git_env(),
         "GIT_AUTHOR_NAME": "t",
         "GIT_AUTHOR_EMAIL": "t@example.com",
         "GIT_COMMITTER_NAME": "t",

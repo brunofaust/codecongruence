@@ -29,6 +29,10 @@ class ParamNameVsUsageRule:
     code: str = "C002"
     description: str = "Parameter name should align with how it is used in the function body."
     default_threshold: float = 0.20
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/C002_param_name_vs_usage/README.md"
+    )
 
     async def check(
         self,

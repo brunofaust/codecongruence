@@ -36,6 +36,10 @@ class DocsOnChangeRule:
     code: str = "D005"
     description: str = "Documentation files should be updated when code changes."
     default_threshold: float = 0.20
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/D005_changelog_exists/README.md"
+    )
 
     async def check(
         self,
