@@ -1,6 +1,6 @@
 default_language_version.python = "3.11"
 
-exclude = { glob = [".claude/**", ".worktrees/**", "conftest.py", ".venv/**", ".mypy_cache/**", ".pytest_cache/**", ".ruff_cache/**"] }
+exclude = { glob = [".claude/**", ".worktrees/**", ".git/**", "conftest.py", ".venv/**", ".mypy_cache/**", ".pytest_cache/**", ".ruff_cache/**"] }
 
 [[repos]]
 repo = "https://github.com/pre-commit/pre-commit-hooks"
@@ -151,7 +151,8 @@ hooks = [
   },
   {
     id = "remove-tabs",
-    name = "✅ check · Remove tabs"
+    name = "✅ check · Remove tabs",
+    exclude = { glob = [".git/**"] }
   }
 ]
 

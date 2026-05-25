@@ -1,5 +1,62 @@
 {
-  "generated_at": "2026-05-25T11:36:23.137129+00:00",
+  "generated_at": "2026-05-25T14:27:29.441032+00:00",
   "version": 1,
-  "violations": []
+  "violations": [
+    {
+      "code": "C003",
+      "file_path": "tests/unit/core/test_embedding_cache.py",
+      "line": 13,
+      "message": "`test_embed_stays_in_memory` (tests/unit/core/test_embedding_cache.py:13) and `test_save_writes_to_disk` (tests/unit/core/test_embedding_cache.py:22) have similar bodies (similarity 1.00 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "tests/unit/core/test_embedding_cache.py",
+      "line": 13,
+      "message": "`test_embed_stays_in_memory` (tests/unit/core/test_embedding_cache.py:13) and `test_cache_loads_from_disk` (tests/unit/core/test_embedding_cache.py:32) have similar bodies (similarity 0.94 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "tests/unit/core/test_embedding_cache.py",
+      "line": 13,
+      "message": "`test_embed_stays_in_memory` (tests/unit/core/test_embedding_cache.py:13) and `test_cache_discarded_on_model_change` (tests/unit/core/test_embedding_cache.py:49) have similar bodies (similarity 0.92 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "tests/unit/core/test_embedding_cache.py",
+      "line": 22,
+      "message": "`test_save_writes_to_disk` (tests/unit/core/test_embedding_cache.py:22) and `test_cache_loads_from_disk` (tests/unit/core/test_embedding_cache.py:32) have similar bodies (similarity 0.95 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "tests/unit/core/test_embedding_cache.py",
+      "line": 22,
+      "message": "`test_save_writes_to_disk` (tests/unit/core/test_embedding_cache.py:22) and `test_cache_discarded_on_model_change` (tests/unit/core/test_embedding_cache.py:49) have similar bodies (similarity 0.93 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "tests/unit/core/test_embedding_cache.py",
+      "line": 32,
+      "message": "`test_cache_loads_from_disk` (tests/unit/core/test_embedding_cache.py:32) and `test_cache_discarded_on_model_change` (tests/unit/core/test_embedding_cache.py:49) have similar bodies (similarity 0.93 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "tests/unit/core/test_embedding_cache.py",
+      "line": 63,
+      "message": "`test_save_force_cleanup_removes_unseen` (tests/unit/core/test_embedding_cache.py:63) and `test_save_without_cleanup_preserves_unseen` (tests/unit/core/test_embedding_cache.py:88) have similar bodies (similarity 0.94 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "tests/unit/core/test_embedding_cache.py",
+      "line": 107,
+      "message": "`test_cache_ttl_evicts_expired_entries` (tests/unit/core/test_embedding_cache.py:107) and `test_cache_ttl_zero_disables_eviction` (tests/unit/core/test_embedding_cache.py:132) have similar bodies (similarity 0.96 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    }
+  ]
 }
