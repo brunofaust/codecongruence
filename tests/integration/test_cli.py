@@ -11,6 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from codecongruence.cli import app
+from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 def _git(repo: Path, *args: str) -> None:
     env = {
-        **os.environ,
+        **base_git_env(),
         "GIT_AUTHOR_NAME": "t",
         "GIT_AUTHOR_EMAIL": "t@example.com",
         "GIT_COMMITTER_NAME": "t",

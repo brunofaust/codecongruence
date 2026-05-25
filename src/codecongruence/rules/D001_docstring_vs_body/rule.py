@@ -28,6 +28,10 @@ class DocstringVsBodyRule:
     code: str = "D001"
     description: str = "Docstring should describe what the function actually does."
     default_threshold: float = 0.30
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/D001_docstring_vs_body/README.md"
+    )
 
     async def check(
         self,

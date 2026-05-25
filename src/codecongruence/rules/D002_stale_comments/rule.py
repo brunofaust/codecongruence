@@ -27,6 +27,10 @@ class StaleCommentsRule:
     code: str = "D002"
     description: str = "Inline comments should describe the next few lines of code."
     default_threshold: float = 0.20
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/D002_stale_comments/README.md"
+    )
 
     async def check(
         self,

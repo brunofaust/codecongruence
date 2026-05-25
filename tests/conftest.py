@@ -60,6 +60,25 @@ _STOPWORDS = frozenset({
 })
 
 
+_GIT_HOOK_VARS = frozenset({
+    "GIT_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_WORK_TREE",
+    "GIT_PREFIX",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+})
+
+
+def base_git_env() -> dict[str, str]:
+    """Return os.environ with git hook variables stripped.
+
+    Prevents GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE set by the prek hook
+    runner from leaking into child git repos created during tests.
+    """
+    return {k: v for k, v in os.environ.items() if k not in _GIT_HOOK_VARS}
+
+
 def _tokenize(text: str) -> list[str]:
     return [t.lower() for t in _TOKEN_RE.findall(text) if t.lower() not in _STOPWORDS]
 
@@ -106,7 +125,7 @@ def fake_embedder(fake_backend: EmbeddingBackend) -> Embedder:
 def repo(tmp_path: Path) -> Iterator[Path]:
     """A throwaway git repo for integration / git-helper tests."""
     env = {
-        **os.environ,
+        **base_git_env(),
         "GIT_AUTHOR_NAME": "t",
         "GIT_AUTHOR_EMAIL": "t@example.com",
         "GIT_COMMITTER_NAME": "t",

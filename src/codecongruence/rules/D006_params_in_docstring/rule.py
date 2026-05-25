@@ -29,6 +29,10 @@ class ParamsInDocstringRule:
     code: str = "D006"
     description: str = "Every parameter should be mentioned somewhere in the docstring."
     default_threshold: float = 0.0  # structural, no embeddings
+    docs_url: str = (
+        "https://github.com/brunofaust/codecongruence/blob/main"
+        "/src/codecongruence/rules/D006_params_in_docstring/README.md"
+    )
 
     async def check(
         self,

@@ -11,6 +11,7 @@ import pytest
 from codecongruence.core.config import RuleConfig
 from codecongruence.core.git import ChangedFile
 from codecongruence.rules.D004_pr_description_vs_diff import PrDescriptionVsDiffRule
+from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
     from codecongruence.core.embedder import Embedder
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 def _git(repo: Path, *args: str) -> None:
     env = {
-        **os.environ,
+        **base_git_env(),
         "GIT_AUTHOR_NAME": "t",
         "GIT_AUTHOR_EMAIL": "t@example.com",
         "GIT_COMMITTER_NAME": "t",
