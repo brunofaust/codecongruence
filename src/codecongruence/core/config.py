@@ -65,6 +65,10 @@ class CodeCongruenceConfig(BaseModel):
     model: str = "BAAI/bge-small-en-v1.5"
     parallel: bool = True
     threads: int | None = None
+    cache_ttl_days: int = Field(
+        default=30,
+        description="TTL for embedding cache entries in days; 0 disables TTL eviction",
+    )
     exclude: list[str] = Field(default_factory=list)
     exclude_functions: list[str] = Field(default_factory=list)
     rules: dict[str, RuleConfig] = Field(default_factory=dict)

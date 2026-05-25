@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Embedding cache garbage collection: two-layer GC strategy via TTL eviction
+    and compaction. Entries not accessed within `cache_ttl_days` (default: 30)
+    are discarded at load time. `Embedder.compact()` called after `--all` runs
+    removes embeddings for texts no longer in the repo. Tracks `last_used`
+    timestamps in NPZ metadata; configurable via `cache_ttl_days` in config
+    (0 disables TTL). Significant space savings on repeated runs and model
+    switches.
+
 - Embedder cache format changed from `embeddings.json.gz` to `embeddings.npz`
     (NumPy compressed binary). Binary float32 storage is ~2-3× smaller and
     faster to load than JSON-encoded floats. Existing `embeddings.json.gz`

@@ -38,6 +38,7 @@ DEFAULT_TOML = """\
 [codecongruence]
 model = "BAAI/bge-small-en-v1.5"
 parallel = true
+cache_ttl_days = 30
 
 [rules.docstring_vs_body]
 enabled = true
@@ -275,6 +276,7 @@ async def _init_setup(*, no_embed: bool) -> None:
         cache_dir=cache_dir,
         model_cache_dir=model_cache_dir,
         threads=config.threads,
+        cache_ttl_days=config.cache_ttl_days,
     )
 
     # Model download may emit fastembed / huggingface_hub tqdm output to stderr.
@@ -303,6 +305,7 @@ async def _init_setup(*, no_embed: bool) -> None:
             await runner.run(pre_gathered=[cf])
             progress.advance(task)
 
+    embedder.save(force_cleanup=True)
     added = len(embedder._cache) - before
     console.print(f"[green]✓[/green] cached {len(embedder._cache)} embedding(s) ({added} new)")
 
@@ -335,6 +338,7 @@ async def _run(
         cache_dir=cache_dir,
         model_cache_dir=model_cache_dir,
         threads=config.threads,
+        cache_ttl_days=config.cache_ttl_days,
     )
     runner = RuleRunner(config, embedder)
     changed = await runner.gather_changed(all_files=all_files, include_unstaged=include_unstaged)
@@ -352,6 +356,8 @@ async def _run(
         only=rule,
         pre_gathered=changed,
     )
+
+    embedder.save(force_cleanup=all_files)
 
     if output_format is OutputFormat.json:
         JsonReporter().report(result)

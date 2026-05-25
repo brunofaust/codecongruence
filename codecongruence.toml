@@ -4,6 +4,7 @@
 [codecongruence]
 model = "BAAI/bge-small-en-v1.5"
 parallel = true
+cache_ttl_days = 30
 # Global file/folder excludes — applied to every rule.
 # exclude = ["tests/**", "docs/**", "**/*.pyi"]
 # Global function excludes — fnmatch on qualified_name (e.g. "ClassName.method").
