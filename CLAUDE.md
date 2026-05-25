@@ -31,12 +31,13 @@ cached) → `RuleRunner` (uses `asyncio.TaskGroup`) → each `Rule` returns a
 
 Each rule lives in its own **code-named subfolder** under
 `src/codecongruence/rules/`. Example: `C001_name_vs_body/rule.py`. The
-eight rules are:
+nine rules are:
 
 | Code | Folder                         | Rule id                  |
 | ---- | ------------------------------ | ------------------------ |
 | C001 | `C001_name_vs_body/`           | `name_vs_body`           |
 | C002 | `C002_param_name_vs_usage/`    | `param_name_vs_usage`    |
+| C003 | `C003_duplicate_functions/`    | `duplicate_functions`    |
 | D001 | `D001_docstring_vs_body/`      | `docstring_vs_body`      |
 | D002 | `D002_stale_comments/`         | `stale_comments`         |
 | D003 | `D003_claude_md_vs_diff/`      | `claude_md_vs_diff`      |
@@ -95,7 +96,7 @@ creates a GitHub release + git tag. **Do not bump the version or edit
 
 The repo runs `codecongruence` on itself in CI. Any PR must:
 
-- Pass all eight rules on the diff.
+- Pass all nine rules on the diff.
 - Update docs (this file, `ARCHITECTURE.md`, `README.md`) when the change
     affects architecture or public API.
 

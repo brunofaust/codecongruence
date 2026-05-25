@@ -47,6 +47,17 @@ threshold = 0.30
 enabled = true
 threshold = 0.25
 
+[rules.param_name_vs_usage]
+enabled = true
+threshold = 0.20
+
+[rules.duplicate_functions]
+enabled = true
+threshold = 0.92
+
+[rules.params_in_docstring]
+enabled = true
+
 [rules.claude_md_vs_diff]
 enabled = true
 threshold = 0.20
