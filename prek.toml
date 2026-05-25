@@ -188,7 +188,7 @@ hooks = [
       "ruff",
       "mdformat-mkdocs"
     ],
-    exclude = { glob = ["TODO.md", "src/codecongruence/rules/D005_changelog_exists/README.md"] }
+    exclude = { glob = ["TODO.md", "src/codecongruence/rules/D005_changelog_exists/README.md", "src/codecongruence/agents/**"] }
   }
 ]
 

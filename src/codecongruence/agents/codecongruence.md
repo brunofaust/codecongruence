@@ -1,6 +1,11 @@
-______________________________________________________________________
-
-## name: codecongruence description: > Use when codecongruence pre-commit violations appear. codecongruence detects semantic drift between code and its surrounding text artifacts (docstrings, comments, function names, CLAUDE.md, CHANGELOG). Apply this skill to understand what each rule checks and how to fix violations.
+---
+name: codecongruence
+description: >
+  Use when codecongruence pre-commit violations appear. codecongruence detects
+  semantic drift between code and its surrounding text artifacts (docstrings,
+  comments, function names, CLAUDE.md, CHANGELOG). Apply this skill to
+  understand what each rule checks and how to fix violations.
+---
 
 # codecongruence — semantic drift checker
 

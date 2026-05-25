@@ -39,6 +39,7 @@ Files are skipped if they already exist. Pass `--force` to overwrite.
 Commit them to git so every contributor's AI assistant has the context.
 
 The template sources live in [`src/codecongruence/agents/`](src/codecongruence/agents/) — browse them to see exactly what gets installed.
+Agent template files use YAML frontmatter (`---` delimiters) for metadata and are protected from markdown formatters to preserve their structure.
 
 ## Rules
 
