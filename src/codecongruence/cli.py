@@ -305,6 +305,7 @@ async def _init_setup(*, no_embed: bool) -> None:
             await runner.run(pre_gathered=[cf])
             progress.advance(task)
 
+    embedder.save(force_cleanup=True)
     added = len(embedder._cache) - before
     console.print(f"[green]✓[/green] cached {len(embedder._cache)} embedding(s) ({added} new)")
 
@@ -356,8 +357,7 @@ async def _run(
         pre_gathered=changed,
     )
 
-    if all_files:
-        embedder.compact()
+    embedder.save(force_cleanup=all_files)
 
     if output_format is OutputFormat.json:
         JsonReporter().report(result)

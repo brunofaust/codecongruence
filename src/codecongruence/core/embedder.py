@@ -184,8 +184,9 @@ class Embedder:
     def embed(self, texts: Sequence[str]) -> NDArray[np.float32]:
         """Embed ``texts`` → ``(n, d)`` float32 matrix.
 
-        Cached per-text by content hash. Empty strings short-circuit to zeros.
-        Accessed hashes are recorded for :meth:`compact`.
+        Stays entirely in memory — call :meth:`save` once at the end of the
+        run to persist. Cached per-text by content hash. Empty strings
+        short-circuit to zeros. Accessed hashes are recorded for :meth:`save`.
 
         Returns:
             Float32 matrix of shape ``(len(texts), embedding_dim)``.
@@ -222,8 +223,6 @@ class Embedder:
                 self._cache[key] = arr
                 self._last_used[key] = now
                 resolved[slot] = arr
-            if self._cache_dir is not None:
-                self._save_disk_cache(self._cache_dir)
 
         dim = max((int(v.shape[0]) for v in resolved.values()), default=0)
         result = np.zeros((len(texts), dim), dtype=np.float32)
@@ -233,23 +232,32 @@ class Embedder:
             result[i, : int(vec.shape[0])] = vec
         return result
 
-    def compact(self) -> int:
-        """Remove cache entries not accessed in this run and persist to disk.
+    def save(self, *, force_cleanup: bool = False) -> int:
+        """Persist the in-memory cache to disk.
 
-        Call this at the end of a ``--all`` scan to evict embeddings for texts
-        that no longer exist in the repo or were not visited. Pairs with the
-        TTL eviction in :meth:`_load_disk_cache` as a two-layer GC strategy.
+        This is the single disk-write point. Call once at the end of every run
+        so new embeddings survive to the next invocation. Stays in memory until
+        then — no incremental writes during the run.
+
+        Args:
+            force_cleanup: When ``True`` (pass after ``--all`` scans), entries
+                not accessed in this run are removed before writing, keeping
+                the cache bounded as the repo evolves. When ``False``, the full
+                cache is written as-is (new entries added, nothing removed).
 
         Returns:
-            Number of entries removed from the cache.
+            Number of entries removed (always ``0`` when ``force_cleanup=False``).
         """
-        stale = [h for h in self._cache if h not in self._seen]
-        for h in stale:
-            del self._cache[h]
-            self._last_used.pop(h, None)
-        if stale and self._cache_dir is not None:
+        removed = 0
+        if force_cleanup:
+            stale = [h for h in self._cache if h not in self._seen]
+            for h in stale:
+                del self._cache[h]
+                self._last_used.pop(h, None)
+            removed = len(stale)
+        if self._cache_dir is not None:
             self._save_disk_cache(self._cache_dir)
-        return len(stale)
+        return removed
 
     @staticmethod
     def cosine(a: NDArray[np.float32], b: NDArray[np.float32]) -> float:
