@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from itertools import combinations
@@ -82,16 +81,14 @@ class DuplicateFunctionsRule:
             return []
 
         bodies = [e.body for e in entries]
-        mat = await asyncio.to_thread(embedder._embed_locked, bodies)
+        mat = await embedder.embed_batch(bodies)
 
         violations: list[RuleViolation] = []
         for i, j in combinations(range(len(entries)), 2):
             a, b = entries[i], entries[j]
             if a.file_path == b.file_path and a.qualified_name == b.qualified_name:
                 continue
-            from codecongruence.core.embedder import Embedder as _Emb  # noqa: PLC0415
-
-            sim = _Emb.cosine(mat[i], mat[j])
+            sim = embedder.cosine(mat[i], mat[j])
             log.debug(
                 "C003  %s::%s  vs  %s::%s  sim=%.3f  threshold=%.3f  %s",
                 a.file_path,

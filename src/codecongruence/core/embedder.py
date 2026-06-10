@@ -287,6 +287,11 @@ class Embedder:
             return 0.0
         return float(min(1.0, max(-1.0, np.dot(a, b) / (na * nb))))
 
+    @property
+    def cache_size(self) -> int:
+        """Number of embeddings currently held in the in-memory cache."""
+        return len(self._cache)
+
     def _embed_locked(self, texts: list[str]) -> NDArray[np.float32]:
         """Embed ``texts`` under the instance lock (thread-safe, blocking).
 
@@ -295,6 +300,20 @@ class Embedder:
         """
         with self._lock:
             return self.embed(texts)
+
+    async def embed_batch(self, texts: Sequence[str]) -> NDArray[np.float32]:
+        """Embed ``texts`` in one backend call without blocking the event loop.
+
+        Runs the embedding in a thread-pool worker so concurrent rule tasks can
+        keep making progress while ONNX computes.
+
+        Args:
+            texts: Strings to embed.
+
+        Returns:
+            Float32 matrix of shape ``(len(texts), embedding_dim)``.
+        """
+        return await asyncio.to_thread(self._embed_locked, list(texts))
 
     async def warm_up(self) -> None:
         """Load the embedding backend and warm up the ONNX runtime.
