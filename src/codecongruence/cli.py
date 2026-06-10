@@ -1,6 +1,7 @@
 """Typer CLI entry. Wires config → embedder → runner → reporter."""
 
 import asyncio
+import os
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -243,7 +244,7 @@ def init_cmd(
     so Claude Code, Cursor, and OpenAI Codex know how to interpret and fix
     codecongruence violations:
 
-    - ``claude/skills/codecongruence.md``
+    - ``.claude/skills/codecongruence/SKILL.md``
     - ``.cursor/rules/codecongruence.mdc``
     - ``AGENTS.md`` (section appended or file created)
 
@@ -262,7 +263,10 @@ def init_cmd(
         Exit: With code ``1`` when a config already exists and ``--force`` was not passed.
     """
     repo_root = asyncio.run(current_repo_root())
-    target = path or default_config_path(repo_root)
+    # Resolve a user-supplied relative --path against the invocation directory
+    # before anchoring at the repo root (pre-embedding reads root-relative paths).
+    target = (path or default_config_path(repo_root)).resolve()
+    os.chdir(repo_root)
     if target.exists() and not force:
         typer.echo(f"refusing to overwrite {target} (pass --force)")
         raise typer.Exit(code=1)
@@ -319,7 +323,7 @@ async def _init_setup(*, no_embed: bool) -> None:
 
     runner = RuleRunner(config, embedder)
     changed = await runner.gather_changed(all_files=True)
-    before = len(embedder._cache)
+    before = embedder.cache_size
 
     with Progress(
         SpinnerColumn(),
@@ -335,8 +339,8 @@ async def _init_setup(*, no_embed: bool) -> None:
             progress.advance(task)
 
     embedder.save(force_cleanup=True)
-    added = len(embedder._cache) - before
-    console.print(f"[green]✓[/green] cached {len(embedder._cache)} embedding(s) ({added} new)")
+    added = embedder.cache_size - before
+    console.print(f"[green]✓[/green] cached {embedder.cache_size} embedding(s) ({added} new)")
 
 
 async def _run(
@@ -361,6 +365,9 @@ async def _run(
 
     repo_root = await current_repo_root()
     config = load_config(path=config_path, repo_root=repo_root)
+    # Rules read changed-file paths relative to the repo root, so anchor the
+    # process there — otherwise running from a subdirectory checks nothing.
+    os.chdir(repo_root)
     cache_dir = repo_root / ".codecongruence"
     model_cache_dir = Path.home() / ".cache" / "codecongruence"
     embedder = Embedder(

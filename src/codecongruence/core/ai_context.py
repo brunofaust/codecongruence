@@ -7,7 +7,7 @@ every rule and fix strategy without consulting external docs.
 Template files live at ``<package>/agents/`` (bundled via pyproject.toml
 ``force-include``). Destinations when ``init`` runs in a user's repo:
 
-- ``agents/codecongruence.md``  → ``claude/skills/codecongruence.md``
+- ``agents/codecongruence.md``  → ``.claude/skills/codecongruence/SKILL.md``
 - ``agents/codecongruence.mdc`` → ``.cursor/rules/codecongruence.mdc``
 - ``agents/AGENTS.md``          → appended to ``AGENTS.md`` (created if absent)
 """
@@ -96,7 +96,7 @@ def write_ai_context_files(
 
     Files written (relative to *repo_root*):
 
-    - ``claude/skills/codecongruence.md`` — Claude Code skill
+    - ``.claude/skills/codecongruence/SKILL.md`` — Claude Code skill
     - ``.cursor/rules/codecongruence.mdc`` — Cursor MDC rule
     - ``AGENTS.md`` — OpenAI Codex instructions (section appended or file created)
 
@@ -110,7 +110,7 @@ def write_ai_context_files(
     """
     results: list[tuple[Path, bool]] = []
 
-    claude_skill = repo_root / "claude" / "skills" / "codecongruence.md"
+    claude_skill = repo_root / ".claude" / "skills" / "codecongruence" / "SKILL.md"
     results.append((
         claude_skill,
         _write_if_absent(claude_skill, _template("codecongruence.md"), force=force),

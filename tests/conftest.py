@@ -71,12 +71,17 @@ _GIT_HOOK_VARS = frozenset({
 
 
 def base_git_env() -> dict[str, str]:
-    """Return os.environ with git hook variables stripped.
+    """Return os.environ prepared for hermetic git use in throwaway repos.
 
-    Prevents GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE set by the prek hook
-    runner from leaking into child git repos created during tests.
+    Strips GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE set by the prek hook
+    runner so they don't leak into child git repos created during tests, and
+    points global/system config at nothing so host-level settings (commit
+    signing, hooks, templates) can't break test commits.
     """
-    return {k: v for k, v in os.environ.items() if k not in _GIT_HOOK_VARS}
+    env = {k: v for k, v in os.environ.items() if k not in _GIT_HOOK_VARS}
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
 
 
 def _tokenize(text: str) -> list[str]:

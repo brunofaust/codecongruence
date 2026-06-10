@@ -29,11 +29,11 @@ uv pip install codecongruence
 directory so your AI assistant understands every rule and fix strategy without
 needing to read the docs separately:
 
-| Installed to                       | Tool                                                     |
-| ---------------------------------- | -------------------------------------------------------- |
-| `claude/skills/codecongruence.md`  | Claude Code (Anthropic) — loaded as a skill              |
-| `.cursor/rules/codecongruence.mdc` | Cursor — applied when editing `.py` or `.md` files       |
-| `AGENTS.md`                        | OpenAI Codex — section appended (file created if absent) |
+| Installed to                             | Tool                                                     |
+| ---------------------------------------- | -------------------------------------------------------- |
+| `.claude/skills/codecongruence/SKILL.md` | Claude Code (Anthropic) — loaded as a skill              |
+| `.cursor/rules/codecongruence.mdc`       | Cursor — applied when editing `.py` or `.md` files       |
+| `AGENTS.md`                              | OpenAI Codex — section appended (file created if absent) |
 
 Files are skipped if they already exist. Pass `--force` to overwrite.
 Commit them to git so every contributor's AI assistant has the context.

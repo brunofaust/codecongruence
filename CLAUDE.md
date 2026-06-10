@@ -119,7 +119,7 @@ by the global worktree convention.
 ## Local commands
 
 ```bash
-uv sync --extra dev
+uv sync                             # dev deps live in [dependency-groups], included by default
 uv run pytest                       # ~100 tests, <2s
 uv run prek run --all-files         # full quality gate (ruff, mypy, markdownlint, …)
 uv run codecongruence --all         # full-repo self check

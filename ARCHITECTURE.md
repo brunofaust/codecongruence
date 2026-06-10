@@ -103,7 +103,7 @@ not what I set?".
 
 `write_ai_context_files(repo_root, *, force)` is called by `codecongruence init`. It reads templates from the bundled `src/codecongruence/agents/` directory (via `importlib.resources`) and writes them to the user's repo:
 
-- `claude/skills/codecongruence.md` — Claude Code skill (YAML frontmatter)
+- `.claude/skills/codecongruence/SKILL.md` — Claude Code skill (YAML frontmatter)
 - `.cursor/rules/codecongruence.mdc` — Cursor MDC rule with glob triggers
 - `AGENTS.md` — OpenAI Codex section (appended or created)
 

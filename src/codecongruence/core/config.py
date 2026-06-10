@@ -193,6 +193,7 @@ def load_config(path: Path | None = None, repo_root: Path | None = None) -> Code
         model=section.get("model", "BAAI/bge-small-en-v1.5"),
         parallel=section.get("parallel", True),
         threads=section.get("threads", None),
+        cache_ttl_days=section.get("cache_ttl_days", 30),
         exclude=section.get("exclude", []),
         exclude_functions=section.get("exclude_functions", []),
         rules=rules,
