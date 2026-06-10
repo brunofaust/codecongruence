@@ -133,7 +133,9 @@ trace.
 ## Diff awareness
 
 Each rule receives `Sequence[ChangedFile]`. A `ChangedFile` carries
-`added_ranges: tuple[tuple[int, int], ...]`. Rules intersect those ranges
+`added_ranges: tuple[tuple[int, int], ...]` plus the `repo_root` its
+relative `path` resolves against (`abs_path`), so rules work regardless of
+the process working directory. Rules intersect those ranges
 with AST line ranges (for `docstring_vs_body`, `name_vs_body`,
 `stale_comments`) or with file-level membership (for `claude_md_vs_diff`,
 `changelog_exists`).

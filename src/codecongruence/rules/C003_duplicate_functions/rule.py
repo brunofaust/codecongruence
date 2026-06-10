@@ -135,10 +135,10 @@ class DuplicateFunctionsRule:
             Deduplicated list of :class:`_FuncEntry` ready for pairwise embedding.
         """
         if scope == "full":
-            repo_root = await current_repo_root()
+            repo_root = changed_files[0].repo_root if changed_files else await current_repo_root()
             paths = await all_tracked_files(cwd=repo_root)
             files = [
-                ChangedFile(path=repo_root / p, added_ranges=())
+                ChangedFile(path=p, added_ranges=(), repo_root=repo_root)
                 for p in paths
                 if (repo_root / p).is_file()
             ]
@@ -153,7 +153,7 @@ class DuplicateFunctionsRule:
             if parser is None:
                 continue
             try:
-                source = cf.path.read_text(encoding="utf-8")
+                source = cf.abs_path.read_text(encoding="utf-8")
             except OSError:
                 continue
             for func in cf.iter_functions(parser, source):

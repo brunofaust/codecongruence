@@ -69,8 +69,10 @@ class DocsOnChangeRule:
             log.debug("D005 SKIP not_triggered  trigger_paths=%s", triggers)
             return []
 
+        root = code_files[0].repo_root
+
         # Get code diff — if empty we are likely in --all mode with nothing staged.
-        code_diff = "\n".join([await git_diff(cf.path) for cf in code_files]).strip()
+        code_diff = "\n".join([await git_diff(cf.path, cwd=root) for cf in code_files]).strip()
         if not code_diff:
             log.debug("D005 SKIP no_staged_code_diff  (--all mode or nothing staged)")
             return []
@@ -78,7 +80,7 @@ class DocsOnChangeRule:
         # Step 2: Which of the docs_files have staged changes?
         changed_doc_diffs: list[str] = []
         for doc_path in docs_files:
-            diff = await git_diff(doc_path, context=200)
+            diff = await git_diff(doc_path, context=200, cwd=root)
             if diff.strip():
                 changed_doc_diffs.append(diff)
 

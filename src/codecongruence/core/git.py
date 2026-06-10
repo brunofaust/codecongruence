@@ -33,11 +33,25 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class ChangedFile:
-    """A path + its added line ranges (1-based, inclusive)."""
+    """A path + its added line ranges (1-based, inclusive).
+
+    ``path`` is relative to ``repo_root`` (matching git output and keeping
+    reported/baselined paths machine-independent); use :attr:`abs_path` to
+    read the file regardless of the process working directory. The default
+    ``repo_root`` of ``"."`` resolves against the working directory at *use*
+    time, so directly constructed instances keep the historical cwd-relative
+    behaviour; the runner injects the discovered repo root.
+    """
 
     path: Path
     added_ranges: tuple[tuple[int, int], ...]
     excluded_fn_ranges: tuple[tuple[int, int], ...] = ()
+    repo_root: Path = Path(".")
+
+    @property
+    def abs_path(self) -> Path:
+        """Absolute path of the file (``repo_root / path``)."""
+        return self.repo_root / self.path
 
     def covers(self, line: int) -> bool:
         """True if ``line`` lies inside any added range.

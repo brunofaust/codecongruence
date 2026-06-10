@@ -53,7 +53,7 @@ class PrDescriptionVsDiffRule:
             return []
 
         threshold = self.default_threshold if config.threshold is None else config.threshold
-        diff = (await git_diff_unified()).strip()
+        diff = (await git_diff_unified(cwd=changed_files[0].repo_root)).strip()
         if not diff:
             return []
 

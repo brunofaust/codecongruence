@@ -63,7 +63,7 @@ def _apply_function_excludes(
             result.append(cf)
             continue
         try:
-            source = cf.path.read_text(encoding="utf-8")
+            source = cf.abs_path.read_text(encoding="utf-8")
         except OSError:
             result.append(cf)
             continue
@@ -138,7 +138,11 @@ class RuleRunner:
         root = self.config.repo_root
         if all_files:
             paths = await all_tracked_files(cwd=root)
-            return [ChangedFile(path=p, added_ranges=()) for p in paths if (root / p).is_file()]
+            return [
+                ChangedFile(path=p, added_ranges=(), repo_root=root)
+                for p in paths
+                if (root / p).is_file()
+            ]
 
         if explicit_files:
             paths = list(explicit_files)
