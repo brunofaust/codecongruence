@@ -21,10 +21,13 @@ repos:
       - id: mypy             # types
 
   - repo: https://github.com/brunofaust/codecongruence
-    rev: v0.1.0
+    rev: v0.5.0
     hooks:
       - id: codecongruence   # semantic
 ```
+
+The revs above are illustrative — run `pre-commit autoupdate` (or
+`prek auto-update`) after adding the chain to pin the current releases.
 
 Run order in the chain matters less than coverage; `pre-commit` will run all
 hooks and report failures from each.

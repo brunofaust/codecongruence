@@ -8,7 +8,7 @@ standard `pre-commit` workflow Just Works.
 ```yaml
 repos:
   - repo: https://github.com/brunofaust/codecongruence
-    rev: v0.1.0          # or any released tag
+    rev: v0.5.0          # or any released tag
     hooks:
       - id: codecongruence
 ```
@@ -52,9 +52,16 @@ Key choices:
 
 ## Pinning + auto-update
 
+`pre-commit` caches the hook environment keyed by `rev`, so mutable refs
+(`latest`, `main`) are unsupported — they freeze on the first-installed
+commit. Pin a release tag and refresh it with:
+
 ```bash
 pre-commit autoupdate           # bumps the rev to the latest tag
 ```
+
+To stay current without manual runs, enable [pre-commit.ci](https://pre-commit.ci)
+(weekly autoupdate PRs) or let Renovate manage the rev.
 
 ## CI
 

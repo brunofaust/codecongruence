@@ -244,6 +244,12 @@ exclude = [
 
 [tool.semantic_release]
 version_toml = [ "pyproject.toml:project.version" ]
+# Keep the pinned `rev:` examples in the usage docs on the latest release.
+# Only single-purpose docs belong here — linters.md mixes other repos' revs.
+version_variables = [
+  "docs/usage/pre-commit.md:rev:tf",
+  "docs/usage/prek.md:rev:tf",
+]
 branch = "main"
 tag_format = "v{version}"
 major_on_zero = false
