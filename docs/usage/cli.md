@@ -35,11 +35,11 @@ codecongruence init --no-embed            # download model but skip pre-embeddin
 Writes a default `codecongruence.toml` with sensible thresholds. Also generates
 AI-tool context files so assistants understand every rule without reading the docs:
 
-| Installed to                       | Tool                                                     |
-| ---------------------------------- | -------------------------------------------------------- |
-| `claude/skills/codecongruence.md`  | Claude Code (Anthropic) — loaded as a skill              |
-| `.cursor/rules/codecongruence.mdc` | Cursor — applied when editing `.py` or `.md` files       |
-| `AGENTS.md`                        | OpenAI Codex — section appended (file created if absent) |
+| Installed to                             | Tool                                                     |
+| ---------------------------------------- | -------------------------------------------------------- |
+| `.claude/skills/codecongruence/SKILL.md` | Claude Code (Anthropic) — loaded as a skill              |
+| `.cursor/rules/codecongruence.mdc`       | Cursor — applied when editing `.py` or `.md` files       |
+| `AGENTS.md`                              | OpenAI Codex — section appended (file created if absent) |
 
 Files are skipped if they already exist. Pass `--force` to overwrite. Refuses to
 overwrite `codecongruence.toml` without `--force`.

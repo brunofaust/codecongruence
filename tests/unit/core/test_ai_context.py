@@ -22,7 +22,7 @@ def test_all_written_on_fresh_dir(tmp_path: Path) -> None:
 def test_claude_skill_path(tmp_path: Path) -> None:
     result = write_ai_context_files(tmp_path)
     paths = [p for p, _ in result]
-    assert any(str(p).endswith("claude/skills/codecongruence.md") for p in paths)
+    assert any(str(p).endswith(".claude/skills/codecongruence/SKILL.md") for p in paths)
 
 
 def test_cursor_rule_path(tmp_path: Path) -> None:
@@ -57,13 +57,13 @@ def test_force_overwrites(tmp_path: Path) -> None:
 
 def test_parent_dirs_created(tmp_path: Path) -> None:
     write_ai_context_files(tmp_path)
-    assert (tmp_path / "claude" / "skills").is_dir()
+    assert (tmp_path / ".claude" / "skills" / "codecongruence").is_dir()
     assert (tmp_path / ".cursor" / "rules").is_dir()
 
 
 def test_claude_skill_has_frontmatter(tmp_path: Path) -> None:
     write_ai_context_files(tmp_path)
-    content = (tmp_path / "claude" / "skills" / "codecongruence.md").read_text()
+    content = (tmp_path / ".claude" / "skills" / "codecongruence" / "SKILL.md").read_text()
     assert content.startswith("---")
     assert "name: codecongruence" in content
 
@@ -112,7 +112,7 @@ def test_agents_md_force_replaces_section(tmp_path: Path) -> None:
 def test_rule_codes_in_all_files(tmp_path: Path, code: str) -> None:
     write_ai_context_files(tmp_path)
     files_to_check = [
-        tmp_path / "claude" / "skills" / "codecongruence.md",
+        tmp_path / ".claude" / "skills" / "codecongruence" / "SKILL.md",
         tmp_path / ".cursor" / "rules" / "codecongruence.mdc",
         tmp_path / "AGENTS.md",
     ]
