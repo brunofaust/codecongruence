@@ -60,8 +60,11 @@ class ClaudeMdVsDiffRule:
         if not code_changes or not doc_changes:
             return []
 
-        code_diff_text = "\n".join([await git_diff(cf.path) for cf in code_changes]).strip()
-        doc_diff_text = "\n".join([await git_diff(cf.path) for cf in doc_changes]).strip()
+        root = code_changes[0].repo_root
+        code_diff_text = "\n".join([
+            await git_diff(cf.path, cwd=root) for cf in code_changes
+        ]).strip()
+        doc_diff_text = "\n".join([await git_diff(cf.path, cwd=root) for cf in doc_changes]).strip()
         if not code_diff_text or not doc_diff_text:
             return []
 

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fixed: the release workflow ran `semantic-release version --no-commit`, so
+    the version bump and CHANGELOG that PSR generated never landed back on
+    `main` — `pyproject.toml` was stuck at 0.1.1 while releases advanced to
+    v0.5.0. The workflow now checks out `main` explicitly and lets PSR commit
+    and push; `pyproject.toml` is realigned to the already-released 0.5.0.
+
+- Fixed: an unknown `--rule` id silently selected zero rules and exited 0 — a
+    typo in a pre-commit hook would disable checking without anyone noticing.
+    Unknown rules now exit `2` with the list of valid ids. `--rule` also
+    accepts short codes (`D001`) as the docs always claimed, and explicitly
+    runs the rule even when disabled in config.
+
+- `RuleRunner` and the rules no longer depend on the process working directory:
+    `ChangedFile` carries its `repo_root` (with an `abs_path` helper), file
+    reads resolve against it, and every git invocation inside rules passes an
+    explicit `cwd`. Library callers can now run from any directory; reported
+    paths stay repo-relative so baselines remain machine-independent (C003
+    `scope = "full"` previously reported absolute paths).
+
+- Fixed: emptying the embedding cache via `save(force_cleanup=True)` left the
+    stale `embeddings.npz` on disk, resurrecting evicted entries on the next
+    run. An emptied cache now removes the file.
+
+- CI workflows upgraded off deprecated Node 20 actions
+    (`actions/checkout@v6`, pinned `astral-sh/setup-uv@v8.2.0`).
+
+- `mypy --strict` now covers `tests/` as well as `src/` (the gate previously
+    checked `src/` only despite the docs claiming repo-wide strictness).
+
 - Fixed: `cache_ttl_days` set in `codecongruence.toml` / `pyproject.toml` was
     silently ignored — `load_config` never read it from the TOML section, so the
     embedding-cache TTL was always the 30-day default.

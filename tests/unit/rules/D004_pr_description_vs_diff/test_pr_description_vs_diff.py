@@ -14,7 +14,10 @@ from codecongruence.rules.D004_pr_description_vs_diff import PrDescriptionVsDiff
 from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from codecongruence.core.embedder import Embedder
+    from codecongruence.rules.base import RuleViolation
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -46,7 +49,9 @@ def _seed_with_staged_change(repo: Path) -> None:
     _git(repo, "add", "a.py")
 
 
-def _run(repo: Path, fake: Embedder, body: str | None, *, threshold: float = 0.10):
+def _run(
+    repo: Path, fake: Embedder, body: str | None, *, threshold: float = 0.10
+) -> Sequence[RuleViolation]:
     cwd = os.getcwd()
     if body is None:
         os.environ.pop("CODECONGRUENCE_PR_BODY", None)

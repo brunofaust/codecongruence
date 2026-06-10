@@ -12,7 +12,10 @@ from codecongruence.rules.D005_changelog_exists import DocsOnChangeRule
 from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from codecongruence.core.embedder import Embedder
+    from codecongruence.rules.base import RuleViolation
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -26,7 +29,9 @@ def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, check=True, env=env, capture_output=True)
 
 
-def _check_in_repo(repo: Path, changed: list[ChangedFile], fake: Embedder) -> list:
+def _check_in_repo(
+    repo: Path, changed: list[ChangedFile], fake: Embedder
+) -> Sequence[RuleViolation]:
     cfg = RuleConfig(
         threshold=0.0,
         **{

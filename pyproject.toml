@@ -4,7 +4,7 @@ requires = [ "hatchling>=1.25" ]
 
 [project]
 name = "codecongruence"
-version = "0.1.1"
+version = "0.5.0"
 description = "Semantic pre-commit hooks. Keep your repo congruent — one story, not many."
 readme = "README.md"
 keywords = [ "documentation", "drift", "embeddings", "linter", "pre-commit", "semantic" ]
@@ -147,7 +147,7 @@ check_untyped_defs = true
 explicit_package_bases = true
 ignore_missing_imports = true
 mypy_path = "src"
-files = [ "src/codecongruence" ]
+files = [ "src/codecongruence", "tests" ]
 exclude = [ "^\\.worktrees/", "^\\.claude/" ]
 
 [[tool.mypy.overrides]]

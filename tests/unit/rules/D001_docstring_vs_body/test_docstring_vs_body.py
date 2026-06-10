@@ -8,12 +8,16 @@ from codecongruence.core.git import ChangedFile
 from codecongruence.rules.D001_docstring_vs_body import DocstringVsBodyRule
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from codecongruence.core.embedder import Embedder
+    from codecongruence.rules.base import RuleViolation
 
 
-def _check(rule: DocstringVsBodyRule, file: Path, emb: Embedder, threshold: float = 0.30):
+def _check(
+    rule: DocstringVsBodyRule, file: Path, emb: Embedder, threshold: float = 0.30
+) -> Sequence[RuleViolation]:
     cfg = RuleConfig(threshold=threshold)
     cf = ChangedFile(path=file, added_ranges=())
     return asyncio.run(rule.check([cf], emb, cfg))

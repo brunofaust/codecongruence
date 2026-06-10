@@ -8,12 +8,14 @@ from codecongruence.core.git import ChangedFile
 from codecongruence.rules.D002_stale_comments import StaleCommentsRule
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from codecongruence.core.embedder import Embedder
+    from codecongruence.rules.base import RuleViolation
 
 
-def _check(file: Path, emb: Embedder, threshold: float = 0.20):
+def _check(file: Path, emb: Embedder, threshold: float = 0.20) -> Sequence[RuleViolation]:
     return asyncio.run(
         StaleCommentsRule().check(
             [ChangedFile(path=file, added_ranges=())],

@@ -16,7 +16,7 @@ from codecongruence.core.embedder import Embedder
 from codecongruence.core.git import ChangedFile
 from codecongruence.core.runner import RuleRunner, RunResult
 from codecongruence.reporters.text import TextReporter
-from codecongruence.rules.base import DOCS_BASE_URL, RuleViolation
+from codecongruence.rules.base import DOCS_BASE_URL, Rule, RuleViolation
 from codecongruence.rules.C001_name_vs_body import NameVsBodyRule
 from codecongruence.rules.C002_param_name_vs_usage import ParamNameVsUsageRule
 from codecongruence.rules.D001_docstring_vs_body import DocstringVsBodyRule
@@ -43,7 +43,7 @@ _ALL_RULES = [
 
 
 @pytest.mark.parametrize("rule", _ALL_RULES, ids=lambda r: r.code)
-def test_every_rule_has_docs_url(rule: object) -> None:
+def test_every_rule_has_docs_url(rule: Rule) -> None:
     """Every rule must have a docs_url attribute pointing to GitHub README."""
     url = getattr(rule, "docs_url", None)
     assert url is not None, f"{rule!r} missing docs_url"
@@ -52,7 +52,7 @@ def test_every_rule_has_docs_url(rule: object) -> None:
 
 
 @pytest.mark.parametrize("rule", _ALL_RULES, ids=lambda r: r.code)
-def test_docs_url_contains_rule_code(rule: object) -> None:
+def test_docs_url_contains_rule_code(rule: Rule) -> None:
     """Each rule's docs_url must contain its own code (C001, D005, etc)."""
     url: str = rule.docs_url
     assert rule.code in url, f"docs_url for {rule!r} missing its own code"
@@ -163,7 +163,7 @@ def test_runner_injects_docs_url_into_violations(tmp_path: PathType) -> None:
         repo_root=tmp_path,
         rules={"name_vs_body": RuleConfig(enabled=True)},
     )
-    runner = RuleRunner(config, embedder, rules=[FakeRule()])  # type: ignore[list-item]
+    runner = RuleRunner(config, embedder, rules=[FakeRule()])
     cf = ChangedFile(path=Path("f.py"), added_ranges=())
     result = asyncio.run(runner.run(pre_gathered=[cf]))
 

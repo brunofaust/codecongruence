@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -15,7 +16,6 @@ from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from codecongruence.core.embedder import Embedder
 
@@ -109,6 +109,25 @@ def test_full_run_flags_planted_violations(
     assert "docstring_vs_body" in rule_ids
     # docs_on_change fires because we touched src/ but did not bump CHANGELOG
     assert "docs_on_change" in rule_ids
+
+
+def test_library_run_from_foreign_cwd(
+    staged_repo: Path,
+    fake_embedder: Embedder,
+) -> None:
+    """RuleRunner must not depend on the process cwd being the repo root."""
+    cfg = load_config(repo_root=staged_repo)
+    runner = RuleRunner(cfg, fake_embedder)
+
+    # Deliberately do NOT chdir into staged_repo: paths come from config.repo_root.
+    result = asyncio.run(runner.run())
+
+    assert not result.ok, f"expected planted violation, got: {result.violations}"
+    rule_ids = {v.rule_id for v in result.violations}
+    assert "docstring_vs_body" in rule_ids
+    assert "docs_on_change" in rule_ids
+    # Reported paths stay repo-relative so baselines are machine-independent.
+    assert all(not Path(v.file_path).is_absolute() for v in result.violations)
 
 
 def test_clean_repo_passes(tmp_path: Path, fake_embedder: Embedder) -> None:

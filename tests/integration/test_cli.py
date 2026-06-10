@@ -72,6 +72,18 @@ def test_init_refuses_to_overwrite_without_force(tmp_path: Path, runner: CliRunn
     assert target.read_text() == "pre-existing\n"
 
 
+def test_unknown_rule_id_exits_2(tmp_path: Path, runner: CliRunner) -> None:
+    """A typo in --rule must not silently select zero rules and pass."""
+    _git(tmp_path, "init", "-q", "-b", "main")
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        result = runner.invoke(app, ["--rule", "docstring_vs_bdy"])
+    finally:
+        os.chdir(cwd)
+    assert result.exit_code == 2
+
+
 def test_run_from_subdirectory_finds_files(tmp_path: Path, runner: CliRunner) -> None:
     """The CLI anchors at the repo root, so staged files are found from any subdir."""
     _git(tmp_path, "init", "-q", "-b", "main")

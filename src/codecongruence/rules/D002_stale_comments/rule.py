@@ -57,7 +57,7 @@ class StaleCommentsRule:
             if parser is None:
                 continue
             try:
-                source = cf.path.read_text(encoding="utf-8")
+                source = cf.abs_path.read_text(encoding="utf-8")
             except OSError:
                 continue
 

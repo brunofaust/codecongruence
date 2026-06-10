@@ -85,6 +85,24 @@ async def test_save_force_cleanup_removes_unseen(tmp_path: Path) -> None:
     assert len(e3._cache) == len(e2._cache)
 
 
+async def test_force_cleanup_emptying_cache_removes_disk_file(tmp_path: Path) -> None:
+    """When cleanup evicts everything, the stale npz must not survive on disk."""
+    cache_dir = tmp_path / ".codecongruence-cache"
+    backend = BagOfWordsBackend()
+    e1 = Embedder(model_name="fake", backend=backend, cache_dir=cache_dir)
+    _ = await e1.similarity("alpha beta", "gamma delta")
+    e1.save()
+    assert (cache_dir / "embeddings.npz").exists()
+
+    # New run: access nothing, then force cleanup — cache empties entirely.
+    e2 = Embedder(model_name="fake", backend=BagOfWordsBackend(), cache_dir=cache_dir)
+    removed = e2.save(force_cleanup=True)
+
+    assert removed > 0
+    assert len(e2._cache) == 0
+    assert not (cache_dir / "embeddings.npz").exists()
+
+
 async def test_save_without_cleanup_preserves_unseen(tmp_path: Path) -> None:
     """save() without force_cleanup keeps all cached entries on disk."""
     cache_dir = tmp_path / ".codecongruence-cache"
