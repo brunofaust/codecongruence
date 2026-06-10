@@ -120,8 +120,9 @@ by the global worktree convention.
 
 ```bash
 uv sync                             # dev deps live in [dependency-groups], included by default
-uv run pytest                       # ~100 tests, <2s
+uv run pytest                       # ~190 tests, <2s
 uv run prek run --all-files         # full quality gate (ruff, mypy, markdownlint, …)
+SKIP=gitleaks uv run prek run --all-files   # offline/restricted networks (gitleaks downloads Go)
 uv run codecongruence --all         # full-repo self check
 ```
 

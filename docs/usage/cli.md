@@ -6,19 +6,19 @@ codecongruence [OPTIONS] [COMMAND]
 
 ## Global options
 
-| Flag                 | Short | Type         | Default | What it does                                                                                                                                 |
-| -------------------- | ----- | ------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--rule`             | `-r`  | str          | —       | Run only a single rule. Pass either the `rule_id` slug (`docstring_vs_body`) or the short code (`D001`, `C001`).                             |
-| `--config`           | `-c`  | path         | auto    | Path to a TOML config. Layout (`codecongruence.toml` vs `pyproject.toml`) is auto-detected from the section name.                            |
-| `--all`              |       | flag         | off     | Scan the whole repo, not just staged changes. Useful for ad-hoc audits and CI.                                                               |
-| `--format`           | `-f`  | `text\|json` | `text`  | Output format. `json` is stable, see "JSON schema" below.                                                                                    |
-| `--verbose`          | `-v`  | flag         | off     | Print per-check details even on success.                                                                                                     |
-| `--include-unstaged` |       | flag         | off     | Also include unstaged working-tree changes (the hook itself never touches unstaged files; this is for one-off interactive use).              |
-| `--update-baseline`  |       | flag         | off     | Save all current violations as the new baseline and exit `0`. Commit `.codecongruence/.codecongruence-baseline.json` to share with the team. |
-| `--debug`            |       | flag         | off     | Emit per-check similarity scores and pass/fail to stderr. Useful when tuning thresholds.                                                     |
-| `--purge-models`     |       | flag         | —       | Delete the model cache (`~/.cache/codecongruence`) and exit.                                                                                 |
-| `--version`          |       | flag         | —       | Print the version and exit `0`.                                                                                                              |
-| `--help`             |       | flag         | —       | Show help and exit `0`.                                                                                                                      |
+| Flag                 | Short | Type         | Default | What it does                                                                                                                                                         |
+| -------------------- | ----- | ------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--rule`             | `-r`  | str          | —       | Run only a single rule, even if disabled in config. Pass either the `rule_id` slug (`docstring_vs_body`) or the short code (`D001`, `C001`). Unknown rules exit `2`. |
+| `--config`           | `-c`  | path         | auto    | Path to a TOML config. Layout (`codecongruence.toml` vs `pyproject.toml`) is auto-detected from the section name.                                                    |
+| `--all`              |       | flag         | off     | Scan the whole repo, not just staged changes. Useful for ad-hoc audits and CI.                                                                                       |
+| `--format`           | `-f`  | `text\|json` | `text`  | Output format. `json` is stable, see "JSON schema" below.                                                                                                            |
+| `--verbose`          | `-v`  | flag         | off     | Print per-check details even on success.                                                                                                                             |
+| `--include-unstaged` |       | flag         | off     | Also include unstaged working-tree changes (the hook itself never touches unstaged files; this is for one-off interactive use).                                      |
+| `--update-baseline`  |       | flag         | off     | Save all current violations as the new baseline and exit `0`. Commit `.codecongruence/.codecongruence-baseline.json` to share with the team.                         |
+| `--debug`            |       | flag         | off     | Emit per-check similarity scores and pass/fail to stderr. Useful when tuning thresholds.                                                                             |
+| `--purge-models`     |       | flag         | —       | Delete the model cache (`~/.cache/codecongruence`) and exit.                                                                                                         |
+| `--version`          |       | flag         | —       | Print the version and exit `0`.                                                                                                                                      |
+| `--help`             |       | flag         | —       | Show help and exit `0`.                                                                                                                                              |
 
 ## Subcommands
 
