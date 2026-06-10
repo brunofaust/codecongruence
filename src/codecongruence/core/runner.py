@@ -38,7 +38,11 @@ if TYPE_CHECKING:
     from codecongruence.core.config import CodeCongruenceConfig
     from codecongruence.rules.base import Rule, RuleViolation
 
-__all__ = ["RuleRunner", "RunResult", "default_rules", "run_rules"]
+__all__ = ["RuleRunner", "RunResult", "UnknownRuleError", "default_rules", "run_rules"]
+
+
+class UnknownRuleError(ValueError):
+    """Raised when ``--rule`` names a rule id that does not exist."""
 
 
 def _apply_file_excludes(changed: list[ChangedFile], patterns: list[str]) -> list[ChangedFile]:
@@ -142,13 +146,31 @@ class RuleRunner:
             paths = await staged_changed_files(cwd=root, include_unstaged=include_unstaged)
 
         ranges = await staged_changed_line_ranges(paths, cwd=root)
-        return [ChangedFile(path=p, added_ranges=ranges.get(p, ())) for p in paths]
+        return [ChangedFile(path=p, added_ranges=ranges.get(p, ()), repo_root=root) for p in paths]
 
-    def _select_rules(self, only: str | None) -> list[Rule]:
-        enabled_ids = {r.rule_id for r in self.rules if self.config.rule(r.rule_id).enabled}
+    def select_rules(self, only: str | None) -> list[Rule]:
+        """Return the rules a run will execute.
+
+        Args:
+            only: When set, select exactly the rule with this id or short code
+                (``docstring_vs_body`` or ``D001``) — even if it is disabled in
+                config (an explicit ``--rule`` is an explicit opt-in).
+                Otherwise select all config-enabled rules.
+
+        Returns:
+            The selected rules in registration order.
+
+        Raises:
+            UnknownRuleError: When ``only`` does not match any registered rule —
+                a typo here must not silently select zero rules and pass.
+        """
         if only is not None:
-            return [r for r in self.rules if r.rule_id == only]
-        return [r for r in self.rules if r.rule_id in enabled_ids]
+            matches = [r for r in self.rules if only in {r.rule_id, r.code}]
+            if not matches:
+                valid = ", ".join(sorted(f"{r.code}/{r.rule_id}" for r in self.rules))
+                raise UnknownRuleError(f"unknown rule {only!r} (valid: {valid})")
+            return matches
+        return [r for r in self.rules if self.config.rule(r.rule_id).enabled]
 
     async def run(
         self,
@@ -181,7 +203,7 @@ class RuleRunner:
                 include_unstaged=include_unstaged,
                 all_files=all_files,
             )
-        selected = self._select_rules(only)
+        selected = self.select_rules(only)
 
         rule_results: list[tuple[Rule, Sequence[RuleViolation]]] = []
         if self.config.parallel and selected:

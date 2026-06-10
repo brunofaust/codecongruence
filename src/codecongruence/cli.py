@@ -14,7 +14,7 @@ from codecongruence.core.baseline import apply_baseline, baseline_path, load_bas
 from codecongruence.core.config import default_config_path, load_config
 from codecongruence.core.embedder import Embedder
 from codecongruence.core.git import current_repo_root
-from codecongruence.core.runner import RuleRunner
+from codecongruence.core.runner import RuleRunner, UnknownRuleError
 from codecongruence.reporters import JsonReporter, TextReporter
 
 __all__ = ["DEFAULT_TOML", "app"]
@@ -127,7 +127,14 @@ def main(
     ctx: typer.Context,
     rule: Annotated[
         str | None,
-        typer.Option("--rule", "-r", help="Run a single rule by id."),
+        typer.Option(
+            "--rule",
+            "-r",
+            help=(
+                "Run a single rule by id (docstring_vs_body) or code (D001), "
+                "even if disabled in config. Unknown rules exit 2."
+            ),
+        ),
     ] = None,
     config_path: Annotated[
         Path | None,
@@ -199,7 +206,8 @@ def main(
     """Run codecongruence on staged changes (default) or the whole repo (``--all``).
 
     Raises:
-        Exit: With code ``1`` when any error-severity violation is found.
+        Exit: With code ``1`` when any error-severity violation is found, or
+            ``2`` when ``--rule`` names an unknown rule id.
     """
     if ctx.invoked_subcommand is not None:
         return
@@ -378,12 +386,17 @@ async def _run(
         cache_ttl_days=config.cache_ttl_days,
     )
     runner = RuleRunner(config, embedder)
+    try:
+        runner.select_rules(rule)
+    except UnknownRuleError as exc:
+        typer.echo(f"codecongruence: {exc}", err=True)
+        return 2
     changed = await runner.gather_changed(all_files=all_files, include_unstaged=include_unstaged)
 
     if verbose and output_format is OutputFormat.text:
         from rich.console import Console  # noqa: PLC0415
 
-        selected_preview = runner._select_rules(rule)
+        selected_preview = runner.select_rules(rule)
         Console().print(
             f"[dim]codecongruence: scanning {len(changed)} file(s) "
             f"with {len(selected_preview)} rule(s)…[/dim]"
