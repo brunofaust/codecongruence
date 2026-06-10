@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,11 @@ from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+# Rich may force-color in CI (FORCE_COLOR) and split tokens like "--config"
+# across ANSI segments; strip escapes before asserting on help text.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -43,8 +49,9 @@ def test_help_lists_init_subcommand(runner: CliRunner, monkeypatch: pytest.Monke
     monkeypatch.setenv("COLUMNS", "200")
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "init" in result.stdout
-    assert "--config" in result.stdout
+    plain = _ANSI_RE.sub("", result.stdout)
+    assert "init" in plain
+    assert "--config" in plain
 
 
 def test_init_writes_default_config(tmp_path: Path, runner: CliRunner) -> None:
