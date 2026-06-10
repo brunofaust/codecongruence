@@ -146,6 +146,12 @@ class Embedder:
 
     def _save_disk_cache(self, cache_dir: Path) -> None:
         if not self._cache:
+            # An emptied cache must also clear the on-disk file, or the next
+            # run would resurrect the evicted entries.
+            try:
+                self._cache_path(cache_dir).unlink(missing_ok=True)
+            except OSError:
+                log.debug("could not remove stale embedding cache in %s", cache_dir)
             return
         hashes = list(self._cache.keys())
         vecs = list(self._cache.values())
