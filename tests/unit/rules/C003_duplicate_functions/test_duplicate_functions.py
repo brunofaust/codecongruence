@@ -8,12 +8,16 @@ from codecongruence.core.git import ChangedFile
 from codecongruence.rules.C003_duplicate_functions import DuplicateFunctionsRule
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from codecongruence.core.embedder import Embedder
+    from codecongruence.rules.base import RuleViolation
 
 
-def _check(files: list[Path], emb: Embedder, threshold: float = 0.92, scope: str = "staged"):
+def _check(
+    files: list[Path], emb: Embedder, threshold: float = 0.92, scope: str = "staged"
+) -> Sequence[RuleViolation]:
     rule = DuplicateFunctionsRule()
     changed = [ChangedFile(path=f, added_ranges=()) for f in files]
     cfg = RuleConfig(threshold=threshold, scope=scope)

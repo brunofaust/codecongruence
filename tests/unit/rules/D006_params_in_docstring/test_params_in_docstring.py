@@ -9,12 +9,14 @@ from codecongruence.rules.D006_params_in_docstring import ParamsInDocstringRule
 from codecongruence.rules.D006_params_in_docstring.rule import mentioned
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from codecongruence.core.embedder import Embedder
+    from codecongruence.rules.base import RuleViolation
 
 
-def _check(file: Path, emb: Embedder, **kwargs):
+def _check(file: Path, emb: Embedder, **kwargs: object) -> Sequence[RuleViolation]:
     rule = ParamsInDocstringRule()
     cfg = RuleConfig(**kwargs)
     return asyncio.run(rule.check([ChangedFile(path=file, added_ranges=())], emb, cfg))
@@ -55,7 +57,7 @@ def test_mentioned_word_boundary() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_flags_undocumented_param(tmp_path: Path, fake_embedder) -> None:
+def test_flags_undocumented_param(tmp_path: Path, fake_embedder: Embedder) -> None:
     src = '''
 def process(user_id, record):
     """Save the user to the database."""
@@ -69,7 +71,7 @@ def process(user_id, record):
     assert any(v.rule_id == "params_in_docstring" for v in violations)
 
 
-def test_passes_all_paramsmentioned(tmp_path: Path, fake_embedder) -> None:
+def test_passes_all_paramsmentioned(tmp_path: Path, fake_embedder: Embedder) -> None:
     src = '''
 def process(user_id, record):
     """Save the user_id and the record to the database."""
@@ -81,7 +83,7 @@ def process(user_id, record):
     assert _check(f, fake_embedder) == []
 
 
-def test_passes_google_style(tmp_path: Path, fake_embedder) -> None:
+def test_passes_google_style(tmp_path: Path, fake_embedder: Embedder) -> None:
     src = '''
 def process(user_id, record):
     """Save the user.
@@ -98,7 +100,7 @@ def process(user_id, record):
     assert _check(f, fake_embedder) == []
 
 
-def test_passes_arguments_style(tmp_path: Path, fake_embedder) -> None:
+def test_passes_arguments_style(tmp_path: Path, fake_embedder: Embedder) -> None:
     src = '''
 def process(user_id, record):
     """Save the user.
@@ -115,7 +117,7 @@ def process(user_id, record):
     assert _check(f, fake_embedder) == []
 
 
-def test_passes_sphinx_style(tmp_path: Path, fake_embedder) -> None:
+def test_passes_sphinx_style(tmp_path: Path, fake_embedder: Embedder) -> None:
     src = '''
 def process(user_id, record):
     """Save the user.
@@ -131,7 +133,7 @@ def process(user_id, record):
     assert _check(f, fake_embedder) == []
 
 
-def test_skips_no_docstring(tmp_path: Path, fake_embedder) -> None:
+def test_skips_no_docstring(tmp_path: Path, fake_embedder: Embedder) -> None:
     src = """
 def process(user_id, record):
     db.save(user_id, record)
@@ -142,7 +144,7 @@ def process(user_id, record):
     assert _check(f, fake_embedder) == []
 
 
-def test_skips_variadic_by_default(tmp_path: Path, fake_embedder) -> None:
+def test_skips_variadic_by_default(tmp_path: Path, fake_embedder: Embedder) -> None:
     src = '''
 def process(*args, **kwargs):
     """Do something."""
@@ -154,7 +156,7 @@ def process(*args, **kwargs):
     assert _check(f, fake_embedder) == []
 
 
-def test_variadic_flagged_when_skip_disabled(tmp_path: Path, fake_embedder) -> None:
+def test_variadic_flagged_when_skip_disabled(tmp_path: Path, fake_embedder: Embedder) -> None:
     src = '''
 def process(*args, **kwargs):
     """Do something."""

@@ -12,7 +12,10 @@ from codecongruence.rules.D003_claude_md_vs_diff import ClaudeMdVsDiffRule
 from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from codecongruence.core.embedder import Embedder
+    from codecongruence.rules.base import RuleViolation
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -35,7 +38,9 @@ def _seed_repo(repo: Path) -> None:
     _git(repo, "commit", "-q", "-m", "seed")
 
 
-def _run(repo: Path, changed: list[ChangedFile], emb: Embedder, *, threshold: float = 0.20):
+def _run(
+    repo: Path, changed: list[ChangedFile], emb: Embedder, *, threshold: float = 0.20
+) -> Sequence[RuleViolation]:
     cfg = RuleConfig(
         threshold=threshold,
         code_paths=["src/**"],

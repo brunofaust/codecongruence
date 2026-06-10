@@ -147,7 +147,7 @@ check_untyped_defs = true
 explicit_package_bases = true
 ignore_missing_imports = true
 mypy_path = "src"
-files = [ "src/codecongruence" ]
+files = [ "src/codecongruence", "tests" ]
 exclude = [ "^\\.worktrees/", "^\\.claude/" ]
 
 [[tool.mypy.overrides]]
