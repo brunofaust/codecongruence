@@ -13,15 +13,35 @@ the preferred idiom for new projects (no per-hook YAML noise).
 uv tool install prek
 ```
 
-## 2. Add codecongruence to `.pre-commit-config.yaml`
+## 2. Add codecongruence to your config
+
+`prek.toml` (the prek-native idiom):
+
+```toml
+[[repos]]
+repo = "https://github.com/brunofaust/codecongruence"
+rev = "v0.5.0"
+hooks = [{ id = "codecongruence" }]
+```
+
+Or the wire-compatible `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
   - repo: https://github.com/brunofaust/codecongruence
-    rev: v0.1.0
+    rev: v0.5.0
     hooks:
       - id: codecongruence
 ```
+
+> **Why pin a tag instead of `latest`?** prek (like pre-commit) caches the
+> hook environment keyed by `rev`. A mutable ref such as a moving `latest`
+> tag or `main` is cloned once and never refreshed — it silently freezes on
+> the first-installed commit. Pin a release tag and keep it current with:
+>
+> ```bash
+> prek auto-update    # bumps rev to the latest released tag
+> ```
 
 ## 3. Install the git hook
 

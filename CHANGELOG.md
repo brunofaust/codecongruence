@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Usage docs (`prek.md`, `pre-commit.md`) now show the current release in
+    their pinned `rev:` examples and explain why a moving `latest` ref cannot
+    work with prek/pre-commit (hook environments are cached by `rev`). The
+    examples are kept current automatically: `version_variables` in
+    `[tool.semantic_release]` rewrites them on every release. `prek.md` also
+    gained the prek-native `prek.toml` snippet.
+
 - Fixed: the release workflow ran `semantic-release version --no-commit`, so
     the version bump and CHANGELOG that PSR generated never landed back on
     `main` — `pyproject.toml` was stuck at 0.1.1 while releases advanced to
