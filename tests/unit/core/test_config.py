@@ -40,6 +40,23 @@ enabled = false
     assert cfg.enabled_rules() == ["docstring_vs_body"]
 
 
+def test_loads_cache_ttl_days(tmp_path: Path) -> None:
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+cache_ttl_days = 7
+        """.strip()
+    )
+    cfg = load_config(repo_root=tmp_path)
+    assert cfg.cache_ttl_days == 7
+
+
+def test_cache_ttl_days_defaults_to_30(tmp_path: Path) -> None:
+    (tmp_path / "codecongruence.toml").write_text("[codecongruence]\nparallel = false\n")
+    cfg = load_config(repo_root=tmp_path)
+    assert cfg.cache_ttl_days == 30
+
+
 def test_extras_preserved(tmp_path: Path) -> None:
     (tmp_path / "codecongruence.toml").write_text(
         """
