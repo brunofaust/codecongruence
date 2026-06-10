@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fixed: `cache_ttl_days` set in `codecongruence.toml` / `pyproject.toml` was
+    silently ignored — `load_config` never read it from the TOML section, so the
+    embedding-cache TTL was always the 30-day default.
+
+- Fixed: `codecongruence init` wrote the Claude Code context file to
+    `claude/skills/codecongruence.md`, a path Claude Code never reads. It now
+    lands at the standard skill location `.claude/skills/codecongruence/SKILL.md`.
+
+- Fixed: running the CLI from a subdirectory of the repo silently checked
+    nothing — git reported paths relative to the repo root while rules read them
+    relative to the invocation directory. The CLI now anchors itself at the repo
+    root before running rules.
+
+- `Embedder` gained a public async `embed_batch()` method and a `cache_size`
+    property, replacing private-attribute access from rule C003 and the CLI.
+
+- Test suite is now hermetic against host git configuration: throwaway repos
+    ignore global/system git config (commit signing, hooks, templates) and the
+    `init` CLI test no longer downloads the real embedding model.
+
 - Embedding cache garbage collection: two-layer GC strategy via TTL eviction
     and compaction. Entries not accessed within `cache_ttl_days` (default: 30)
     are discarded at load time. `Embedder.compact()` called after `--all` runs
