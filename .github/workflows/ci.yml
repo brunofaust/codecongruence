@@ -15,6 +15,6 @@ jobs:
     env:
       SKIP: no-commit-to-branch
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
       - run: uv run --only-dev prek run --all-files
