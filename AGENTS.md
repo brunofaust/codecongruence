@@ -46,6 +46,27 @@ Fields: `file:line  CODE  rule_id  similarity=<score> < <threshold>`
 Lower similarity = more drift. Threshold is configurable per rule in
 `codecongruence.toml` or `pyproject.toml [tool.codecongruence]`.
 
+## Acting on a violation — never confabulate the path
+
+The default terminal report is a `rich` table. When codecongruence runs as a
+pre-commit hook its output is **captured, not a TTY**, so `rich` falls back to
+an 80-column width and long cells wrap across lines — a C003 message carries
+**two** `file:line` pairs and folds mid-path. A wrapped path is easy to
+misread and reconstruct wrong (e.g. inventing a `core/ai/llm/ai_model.py`
+segment when the real file is `core/ai/ai_model.py`).
+
+Before you edit anything a violation points at:
+
+1. **Re-run for authoritative locations:** `codecongruence --format json`. The
+    `violations[].file_path` and `violations[].line` fields are exact,
+    unwrapped, and taken straight from git's tracked-file list.
+1. **Copy the path verbatim** from that JSON (or from the un-wrapped `file:line`
+    column) — do **not** reconstruct it from your mental model of the repo
+    layout.
+1. **Confirm it exists** before editing. If your recollection of the path
+    differs from the tool's, the tool is authoritative — it only reports files
+    git is tracking.
+
 ## Commands
 
 ```bash
