@@ -92,16 +92,23 @@ Common types and their version impact:
 The `commitizen` prek hook validates the format on every commit. If your
 commit message is rejected, rewrite it with `git commit --amend`.
 
-Releases are triggered by merging a `release/` branch into `main`:
+Releases go through a `release/x.y.z` branch. `main` is protected, so the bump
+lands via the PR, not a direct push (see `.github/workflows/release.yml`):
 
 1. Merge feature PRs to `main` normally — no release is created.
 1. When ready to release, create a branch named `release/x.y.z` off `main`
     (no content changes required) and open a PR to `main`.
-1. Merging that PR triggers `python-semantic-release`, which reads all
-    conventional commits since the last tag, bumps `pyproject.toml`,
-    writes `CHANGELOG.md`, and creates a GitHub release + git tag.
+1. The **`prepare`** job runs `python-semantic-release` on the release branch:
+    it reads the conventional commits since the last tag, bumps
+    `pyproject.toml`, writes `CHANGELOG.md`, bumps the docs `rev:` examples, and
+    commits that to the release branch. Your PR now carries the bump.
+1. Merging the PR runs the **`publish`** job: it creates + pushes the
+    `vX.Y.Z` tag (tags are not branch-protected) and the GitHub release from the
+    CHANGELOG. It never pushes to `main`.
 
-**Do not bump the version or edit `CHANGELOG.md` manually.**
+**Do not bump the version or edit `CHANGELOG.md` manually** — the `prepare` job
+does it on the branch. The `x.y.z` in the branch name is only a label; the real
+version is whatever the commits since the last tag compute to.
 
 ## Eat own dogfood
 
