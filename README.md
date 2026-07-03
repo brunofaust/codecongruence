@@ -13,11 +13,19 @@ Semantic pre-commit hook framework. Detects drift between code and surrounding a
 
 ## Installation
 
+Not on PyPI yet — install straight from GitHub with [uv](https://docs.astral.sh/uv/):
+
 ```bash
-pip install codecongruence
-# or with uv
-uv pip install codecongruence
+# Latest release (tracks main, where releases land)
+uv tool install git+https://github.com/brunofaust/codecongruence.git
+
+# Or pin to a specific release tag for reproducibility
+uv tool install "git+https://github.com/brunofaust/codecongruence.git@vX.Y.Z"
 ```
+
+This puts the `codecongruence` command on your `PATH`. Upgrade later with
+`uv tool upgrade codecongruence`. Browse [releases](https://github.com/brunofaust/codecongruence/releases)
+for the tag to pin.
 
 > **Default mode checks only staged files.** If nothing is staged (`git add`),
 > the tool prints a warning and exits cleanly — it does not scan the whole repo.
