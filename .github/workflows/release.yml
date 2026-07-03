@@ -1,6 +1,17 @@
 name: release
 
+# `main` is protected and rejects direct pushes, so python-semantic-release
+# cannot commit the version bump straight to it. Instead the release is split:
+#
+#   prepare  — on a push to release/**, PSR generates the version bump +
+#              CHANGELOG on the release branch. It lands on main through the
+#              normal PR merge (which branch protection allows).
+#   publish  — when that PR merges, main already carries the bump, so we only
+#              create + push the tag (tags are not branch-protected) and the
+#              GitHub release. Nothing is pushed to main.
 on:
+  push:
+    branches: ['release/**']
   pull_request:
     types: [closed]
     branches: [main]
@@ -10,18 +21,63 @@ permissions:
   id-token: write
 
 jobs:
-  release:
-    name: semantic-release
-    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
+  prepare:
+    name: prepare release bump
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     concurrency:
-      group: release-${{ github.ref }}
+      group: release-prepare-${{ github.ref }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
-          # pull_request events check out a detached merge ref; PSR must commit
-          # the version bump + CHANGELOG to main and push it back.
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Install python-semantic-release
+        run: uv tool install "python-semantic-release>=9,<10"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Idempotency guard: PSR derives the next version from tags, so it is
+      # stable across re-runs. Once the bump is applied, pyproject already
+      # matches and we exit — this is what stops the prepare push from looping,
+      # so the bump commit does NOT need `[skip ci]` and CI validates the PR.
+      - name: Generate the bump onto the release branch (if not already done)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          next="$(semantic-release version --print)"
+          current="$(grep -m1 -oE '^version = "[^"]+"' pyproject.toml | sed -E 's/version = "(.*)"/\1/')"
+          if [ "$next" = "$current" ]; then
+            echo "pyproject already at $current; bump already prepared — nothing to do."
+            exit 0
+          fi
+          echo "Bumping $current -> $next on ${GITHUB_REF_NAME}."
+          semantic-release version --no-tag --no-push --no-vcs-release
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  publish:
+    name: tag and publish release
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.merged == true
+      && startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
           ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -36,14 +92,51 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Run python-semantic-release
-        run: semantic-release version
+      # Sanity check: main must already carry the bump the release PR was meant
+      # to land. If prepare never ran (e.g. an empty release PR), the computed
+      # version won't match pyproject — fail loudly instead of tagging the
+      # previous version.
+      - name: Resolve released version
+        id: v
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          expected="$(semantic-release version --print)"
+          current="$(grep -m1 -oE '^version = "[^"]+"' pyproject.toml | sed -E 's/version = "(.*)"/\1/')"
+          if [ "$expected" != "$current" ]; then
+            echo "::error::main is at $current but the release should be $expected — the bump never landed. Did the prepare job run on the release branch?"
+            exit 1
+          fi
+          echo "version=$current" >> "$GITHUB_OUTPUT"
 
-      - name: Publish GitHub Release
-        run: semantic-release publish
+      - name: Create and push the tag
+        run: |
+          set -euo pipefail
+          v="v${{ steps.v.outputs.version }}"
+          if git rev-parse "$v" >/dev/null 2>&1; then
+            echo "tag $v already exists; skipping tag creation."
+          else
+            git tag -a "$v" -m "$v"
+            git push origin "$v"
+          fi
+
+      - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.v.outputs.version }}"
+          v="v${version}"
+          if gh release view "$v" >/dev/null 2>&1; then
+            echo "release $v already exists; skipping."
+            exit 0
+          fi
+          # Pull just this version's section out of the CHANGELOG for the notes.
+          notes="$(awk -v ver="$version" '
+            $0 ~ "^#+ +v?" ver "([^0-9]|$)" {flag=1; next}
+            /^#+ +v?[0-9]/ {if (flag) exit}
+            flag {print}
+          ' CHANGELOG.md)"
+          gh release create "$v" --title "$v" --notes "${notes:-Release $v}"

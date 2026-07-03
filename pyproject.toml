@@ -250,10 +250,12 @@ version_variables = [
   "docs/usage/pre-commit.md:rev:tf",
   "docs/usage/prek.md:rev:tf",
 ]
-branch = "main"
 tag_format = "v{version}"
 major_on_zero = false
-commit_message = "chore(release): v{version} [skip ci]"
+# No `[skip ci]`: the bump commit lands on the release branch and must be
+# validated by CI on the release PR. The prepare job is loop-guarded instead
+# (it re-runs as a no-op once pyproject already matches the computed version).
+commit_message = "chore(release): v{version}"
 changelog_file = "CHANGELOG.md"
 exclude_commit_patterns = [
   "^chore",
@@ -268,6 +270,13 @@ exclude_commit_patterns = [
 upload_to_pypi = false
 build_command = ""
 remote.type = "github"
+# `main` is a protected branch that rejects direct pushes, so the version bump
+# is generated on the `release/x.y.z` branch (allowed here) and lands on `main`
+# through the PR merge; the post-merge job only pushes a tag. Both groups are
+# non-prerelease so the computed version is identical on either branch.
+branches.main.match = "main"
+branches.release.match = "release/.*"
+branches.release.prerelease = false
 
 [tool.commitizen]
 name = "cz_conventional_commits"
