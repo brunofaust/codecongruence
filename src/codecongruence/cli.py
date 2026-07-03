@@ -11,9 +11,9 @@ import typer
 from codecongruence import __version__
 from codecongruence.core.ai_context import write_ai_context_files
 from codecongruence.core.baseline import apply_baseline, baseline_path, load_baseline, save_baseline
-from codecongruence.core.config import default_config_path, load_config
+from codecongruence.core.config import CodeCongruenceConfig, default_config_path, load_config
 from codecongruence.core.embedder import Embedder
-from codecongruence.core.git import current_repo_root
+from codecongruence.core.git import current_repo_root, main_worktree_root
 from codecongruence.core.runner import RuleRunner, UnknownRuleError
 from codecongruence.reporters import JsonReporter, TextReporter
 
@@ -101,6 +101,39 @@ def _ensure_gitignore_entry(repo_root: Path, entry: str = ".codecongruence") -> 
     else:
         gitignore.write_text(f"{entry}\n", encoding="utf-8")
     return True
+
+
+async def make_embedder(config: CodeCongruenceConfig, repo_root: Path) -> Embedder:
+    """Build the run's :class:`Embedder` with a worktree-aware vector cache.
+
+    The writable vector cache lives in the current worktree
+    (``<repo_root>/.codecongruence``). The primary worktree's cache is layered
+    underneath as a read-only *base*, so a linked git worktree reuses the
+    primary's warm embeddings instead of cold-starting on a fresh checkout. The
+    :class:`Embedder` ignores the base when it resolves to the local cache —
+    i.e. when this run *is* the primary worktree, which then owns its cache
+    directly. Both caches are content-hash keyed, so a base entry is valid for
+    any worktree.
+
+    Args:
+        config: Loaded configuration for this run.
+        repo_root: Root of the current worktree.
+
+    Returns:
+        A configured :class:`Embedder` ready to embed.
+    """
+    local_cache_dir = repo_root / ".codecongruence"
+    main_root = await main_worktree_root(cwd=repo_root)
+    base_cache_dir = None if main_root is None else main_root / ".codecongruence"
+    model_cache_dir = Path.home() / ".cache" / "codecongruence"
+    return Embedder(
+        model_name=config.model,
+        cache_dir=local_cache_dir,
+        base_cache_dir=base_cache_dir,
+        model_cache_dir=model_cache_dir,
+        threads=config.threads,
+        cache_ttl_days=config.cache_ttl_days,
+    )
 
 
 def _version_callback(value: bool) -> None:
@@ -310,15 +343,7 @@ async def _init_setup(*, no_embed: bool) -> None:
 
     repo_root = await current_repo_root()
     config = load_config(repo_root=repo_root)
-    cache_dir = repo_root / ".codecongruence"
-    model_cache_dir = Path.home() / ".cache" / "codecongruence"
-    embedder = Embedder(
-        model_name=config.model,
-        cache_dir=cache_dir,
-        model_cache_dir=model_cache_dir,
-        threads=config.threads,
-        cache_ttl_days=config.cache_ttl_days,
-    )
+    embedder = await make_embedder(config, repo_root)
 
     # Model download may emit fastembed / huggingface_hub tqdm output to stderr.
     # Print a plain line before so it doesn't interleave with any live display.
@@ -376,15 +401,7 @@ async def _run(
     # Rules read changed-file paths relative to the repo root, so anchor the
     # process there — otherwise running from a subdirectory checks nothing.
     os.chdir(repo_root)
-    cache_dir = repo_root / ".codecongruence"
-    model_cache_dir = Path.home() / ".cache" / "codecongruence"
-    embedder = Embedder(
-        model_name=config.model,
-        cache_dir=cache_dir,
-        model_cache_dir=model_cache_dir,
-        threads=config.threads,
-        cache_ttl_days=config.cache_ttl_days,
-    )
+    embedder = await make_embedder(config, repo_root)
     runner = RuleRunner(config, embedder)
     try:
         runner.select_rules(rule)

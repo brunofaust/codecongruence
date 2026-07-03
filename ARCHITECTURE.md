@@ -56,6 +56,13 @@
 - Backend protocol (`EmbeddingBackend`) so tests inject a deterministic
     bag-of-words fake instead of downloading 130 MB of ONNX weights.
 - Per-run content-hash cache: identical text embedded once.
+- Worktree-aware disk cache: an optional read-only `base_cache_dir` (the primary
+    worktree's `.codecongruence/`) is layered under the writable per-worktree
+    cache, so linked worktrees reuse warm embeddings and `save()` persists only
+    locally-owned (non-base) keys. Writes go through `_atomic_savez`
+    (temp file + `os.replace`) so a concurrent worktree never reads a torn base.
+    `main_worktree_root()` (`core/git.py`) resolves the base via
+    `git worktree list`.
 - `cosine(a, b)` zero-pads mismatched-shape vectors and clamps to `[-1, 1]`
     to absorb float32 round-off.
 - `embed()` returns an `(n, d)` `float32` matrix even when some inputs are

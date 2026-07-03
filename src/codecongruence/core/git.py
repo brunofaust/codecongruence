@@ -26,6 +26,7 @@ __all__ = [
     "current_repo_root",
     "git_diff",
     "git_diff_unified",
+    "main_worktree_root",
     "staged_changed_files",
     "staged_changed_line_ranges",
 ]
@@ -140,6 +141,31 @@ async def current_repo_root(cwd: Path | None = None) -> Path:
     """Return the repo root, or ``cwd`` if not in a git repo."""
     out = (await _run_git("rev-parse", "--show-toplevel", cwd=cwd)).strip()
     return Path(out) if out else (cwd or Path.cwd())
+
+
+async def main_worktree_root(cwd: Path | None = None) -> Path | None:
+    """Return the primary (main) worktree root, or ``None`` if unresolvable.
+
+    Every linked worktree of a repository shares one *primary* worktree — the
+    original checkout whose ``.git`` is a real directory. ``git worktree list``
+    always lists it first, so its path is the first ``worktree`` line of the
+    ``--porcelain`` output. Used to locate the shared "base" embedding cache so
+    linked worktrees reuse the primary's warm cache instead of cold-starting.
+
+    Args:
+        cwd: Directory to run git in. Defaults to the current working directory.
+
+    Returns:
+        The primary worktree root, or ``None`` when not in a git repo (or git is
+        unavailable) so callers fall back to a local-only cache.
+    """
+    raw = await _run_git("worktree", "list", "--porcelain", cwd=cwd)
+    prefix = "worktree "
+    for line in raw.splitlines():
+        if line.startswith(prefix):
+            path = line[len(prefix) :].strip()
+            return Path(path) if path else None
+    return None
 
 
 async def all_tracked_files(*, cwd: Path | None = None) -> list[Path]:

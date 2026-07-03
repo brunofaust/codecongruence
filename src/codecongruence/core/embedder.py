@@ -8,11 +8,14 @@ process. ONNX-based fastembed avoids the PyTorch dependency entirely.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
+import os
+import tempfile
 import threading
 import time
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
@@ -55,6 +58,15 @@ class Embedder:
         cache_dir: Directory for the per-run vector cache
             (``<cache_dir>/embeddings.npz``). Keyed by content-hash +
             model name; stale entries from a different model are discarded.
+            This is the only directory :meth:`save` writes to.
+        base_cache_dir: Optional read-only *base* cache layered underneath
+            ``cache_dir``. Its entries warm this run but are never rewritten by
+            :meth:`save`, so a linked git worktree can reuse the primary
+            worktree's cache without cold-starting and without duplicating the
+            shared corpus into its own file. Ignored when it resolves to the
+            same directory as ``cache_dir`` (the primary worktree owns its base
+            directly). Because keys are content hashes, a base entry is always
+            valid for any worktree.
         model_cache_dir: Directory where fastembed stores downloaded model
             weights. Defaults to the fastembed system default (temp dir).
             Pass ``~/.cache/codecongruence`` for a persistent cross-run cache.
@@ -72,6 +84,7 @@ class Embedder:
         *,
         backend: EmbeddingBackend | None = None,
         cache_dir: Path | None = None,
+        base_cache_dir: Path | None = None,
         model_cache_dir: Path | None = None,
         threads: int | None = None,
         cache_ttl_days: int = 30,
@@ -82,11 +95,23 @@ class Embedder:
         self._cache: dict[str, NDArray[np.float32]] = {}
         self._last_used: dict[str, float] = {}
         self._seen: set[str] = set()
+        self._base_keys: set[str] = set()
         self._cache_dir = cache_dir
         self._model_cache_dir = model_cache_dir
         self._threads = threads
         self._cache_ttl_days = cache_ttl_days
         self._lock = threading.Lock()
+        # Load the read-only base first, then overlay the writable local cache.
+        # A base that resolves to the same directory as the local cache is the
+        # primary worktree owning its own cache — treat it as local, not base,
+        # so save() still persists everything.
+        if (
+            base_cache_dir is not None
+            and cache_dir is not None
+            and (base_cache_dir.resolve() != cache_dir.resolve())
+        ):
+            self._load_disk_cache(base_cache_dir)
+            self._base_keys = set(self._cache)
         if cache_dir is not None:
             self._load_disk_cache(cache_dir)
 
@@ -141,20 +166,65 @@ class Embedder:
             cutoff = now - self._cache_ttl_days * 86400
             cache = {h: v for h, v in cache.items() if last_used.get(h, 0.0) >= cutoff}
             last_used = {h: ts for h, ts in last_used.items() if h in cache}
-        self._cache = cache
-        self._last_used = last_used
+        # Merge, not replace: this runs once for the base layer and again for the
+        # local layer. Later (local) entries win on collision — but since keys
+        # are content hashes, a collision maps to the identical vector anyway.
+        self._cache.update(cache)
+        self._last_used.update(last_used)
+
+    @staticmethod
+    def _atomic_savez(
+        path: Path,
+        *,
+        model: NDArray[Any],
+        hashes: NDArray[Any],
+        matrix: NDArray[np.float32],
+        last_used: NDArray[np.float64],
+    ) -> None:
+        """Write an ``.npz`` atomically via a temp file + ``os.replace``.
+
+        A torn write would corrupt a cache a concurrent worktree is reading as
+        its base layer. ``os.replace`` is atomic within a filesystem, so readers
+        always see either the previous file or the complete new one — never a
+        partial one.
+
+        Args:
+            path: Final destination path for the ``.npz``.
+            model: 0-d array holding the model name.
+            hashes: 1-d array of content-hash keys.
+            matrix: ``(n, dim)`` float32 embedding matrix.
+            last_used: 1-d float64 array of last-access timestamps.
+
+        Raises:
+            OSError: If the temp file cannot be written or replaced.
+        """
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".npz.tmp")
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                np.savez_compressed(
+                    handle, model=model, hashes=hashes, matrix=matrix, last_used=last_used
+                )
+            os.replace(tmp, path)
+        except OSError:
+            # Best-effort temp cleanup; the original cache file is left intact.
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
 
     def _save_disk_cache(self, cache_dir: Path) -> None:
-        if not self._cache:
-            # An emptied cache must also clear the on-disk file, or the next
-            # run would resurrect the evicted entries.
+        # Persist only locally-owned entries: base-layer keys belong to another
+        # worktree's cache and must never be duplicated or rewritten here.
+        hashes = [h for h in self._cache if h not in self._base_keys]
+        if not hashes:
+            # Nothing locally owned (cache emptied or fully covered by the base):
+            # clear any stale local file so the next run can't resurrect evicted
+            # entries.
             try:
                 self._cache_path(cache_dir).unlink(missing_ok=True)
             except OSError:
                 log.debug("could not remove stale embedding cache in %s", cache_dir)
             return
-        hashes = list(self._cache.keys())
-        vecs = list(self._cache.values())
+        vecs = [self._cache[h] for h in hashes]
         max_dim = max(int(v.shape[0]) for v in vecs)
         matrix = np.zeros((len(vecs), max_dim), dtype=np.float32)
         for i, v in enumerate(vecs):
@@ -163,7 +233,7 @@ class Embedder:
         last_used_arr = np.array([self._last_used.get(h, now) for h in hashes], dtype=np.float64)
         try:
             cache_dir.mkdir(parents=True, exist_ok=True)
-            np.savez_compressed(
+            self._atomic_savez(
                 self._cache_path(cache_dir),
                 model=np.array(self.model_name),
                 hashes=np.array(hashes),
@@ -256,7 +326,9 @@ class Embedder:
         """
         removed = 0
         if force_cleanup:
-            stale = [h for h in self._cache if h not in self._seen]
+            # Only prune locally-owned entries — base-layer keys belong to the
+            # primary worktree's cache and are not this run's to evict.
+            stale = [h for h in self._cache if h not in self._seen and h not in self._base_keys]
             for h in stale:
                 del self._cache[h]
                 self._last_used.pop(h, None)

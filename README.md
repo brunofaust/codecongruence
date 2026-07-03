@@ -146,9 +146,27 @@ Embeddings are cached in `.codecongruence/embeddings.npz` (model-specific, conte
 Two GC mechanisms:
 
 1. **TTL eviction** — entries not accessed within `cache_ttl_days` (default: 30) are discarded on load
-1. **Compaction** — `compact()` called after `--all` removes embeddings for texts no longer in the repo
+1. **Compaction** — `save(force_cleanup=True)` after `--all` removes embeddings for texts no longer in the repo
 
 To disable TTL, set `cache_ttl_days = 0`.
+
+### Git worktrees
+
+The cache is keyed purely by content hash, so an embedding computed in one
+checkout is valid in every other checkout of the same repo. codecongruence uses
+that to avoid cold-starting linked [git worktrees](https://git-scm.com/docs/git-worktree):
+
+- The **primary worktree's** `.codecongruence/embeddings.npz` is layered
+    underneath as a read-only **base**. A linked worktree reuses those warm
+    embeddings and only pays to embed the text its own branch changed.
+- Each worktree's `save()` writes **only its local delta** to its own
+    `.codecongruence/` — base entries are never duplicated or rewritten, and a
+    worktree never mutates the primary's cache.
+- Writes are atomic (temp file + `os.replace`), so a worktree reading the base
+    can never observe a half-written file.
+
+The downloaded ONNX model (`~/.cache/codecongruence`) is global and shared by
+every repo and worktree — it is never re-downloaded per worktree.
 
 ## Rules
 
