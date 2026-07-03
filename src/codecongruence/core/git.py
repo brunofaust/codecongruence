@@ -108,7 +108,19 @@ class ChangedFile:
                 yield comment
 
 
-async def _run_git(*args: str, cwd: Path | None = None) -> str:
+async def run_git(*args: str, cwd: Path | None = None) -> str:
+    """Run a read-only ``git`` command and return its stdout.
+
+    Strips inherited git-hook env vars (``GIT_DIR``, ``GIT_WORK_TREE``, …) so a
+    call triggered from inside a pre-commit hook still resolves the real repo.
+
+    Args:
+        args: Arguments passed to ``git``.
+        cwd: Directory to run in. Defaults to the current working directory.
+
+    Returns:
+        Decoded stdout, or an empty string when git exits non-zero.
+    """
     # Strip git hook env vars to prevent leakage (e.g., GIT_WORK_TREE from prek)
     env = {
         k: v
@@ -139,7 +151,7 @@ async def _run_git(*args: str, cwd: Path | None = None) -> str:
 
 async def current_repo_root(cwd: Path | None = None) -> Path:
     """Return the repo root, or ``cwd`` if not in a git repo."""
-    out = (await _run_git("rev-parse", "--show-toplevel", cwd=cwd)).strip()
+    out = (await run_git("rev-parse", "--show-toplevel", cwd=cwd)).strip()
     return Path(out) if out else (cwd or Path.cwd())
 
 
@@ -159,7 +171,7 @@ async def main_worktree_root(cwd: Path | None = None) -> Path | None:
         The primary worktree root, or ``None`` when not in a git repo (or git is
         unavailable) so callers fall back to a local-only cache.
     """
-    raw = await _run_git("worktree", "list", "--porcelain", cwd=cwd)
+    raw = await run_git("worktree", "list", "--porcelain", cwd=cwd)
     prefix = "worktree "
     for line in raw.splitlines():
         if line.startswith(prefix):
@@ -182,7 +194,7 @@ async def all_tracked_files(*, cwd: Path | None = None) -> list[Path]:
     Returns:
         Relative paths of all files git considers part of the working tree.
     """
-    raw = await _run_git("ls-files", "--cached", "--others", "--exclude-standard", cwd=cwd)
+    raw = await run_git("ls-files", "--cached", "--others", "--exclude-standard", cwd=cwd)
     return [Path(line) for line in raw.splitlines() if line.strip()]
 
 
@@ -206,11 +218,11 @@ async def staged_changed_files(
     if not include_unstaged:
         args.append("--cached")
     args.append("HEAD")
-    raw = await _run_git(*args, cwd=cwd)
+    raw = await run_git(*args, cwd=cwd)
     return [Path(line) for line in raw.splitlines() if line.strip()]
 
 
-_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
 async def staged_changed_line_ranges(
@@ -231,7 +243,7 @@ async def staged_changed_line_ranges(
     if not paths:
         return {}
 
-    raw = await _run_git("diff", "--cached", "--unified=0", "--", *map(str, paths), cwd=cwd)
+    raw = await run_git("diff", "--cached", "--unified=0", "--", *map(str, paths), cwd=cwd)
     out: dict[Path, list[tuple[int, int]]] = {p: [] for p in paths}
 
     current_file: Path | None = None
@@ -246,7 +258,7 @@ async def staged_changed_line_ranges(
                 current_file = None
             continue
         if line.startswith("@@") and current_file is not None:
-            match = _HUNK.match(line)
+            match = HUNK.match(line)
             if not match:
                 continue
             start = int(match.group(1))
@@ -264,7 +276,7 @@ async def git_diff_unified(*, cwd: Path | None = None) -> str:
     Args:
         cwd: Working directory for git. Defaults to current directory.
     """
-    return await _run_git("diff", "--cached", "--unified=3", cwd=cwd)
+    return await run_git("diff", "--cached", "--unified=3", cwd=cwd)
 
 
 async def git_diff(path: Path, *, context: int = 3, cwd: Path | None = None) -> str:
@@ -280,4 +292,4 @@ async def git_diff(path: Path, *, context: int = 3, cwd: Path | None = None) -> 
     Returns:
         Unified diff text, or an empty string when there are no staged changes.
     """
-    return await _run_git("diff", "--cached", f"--unified={context}", "--", str(path), cwd=cwd)
+    return await run_git("diff", "--cached", f"--unified={context}", "--", str(path), cwd=cwd)

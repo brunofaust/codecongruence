@@ -39,11 +39,20 @@ class EmbeddingBackend(Protocol):
         ...
 
 
-def _hash(text: str) -> str:
+def hash_text(text: str) -> str:
+    """Return the blake2b content-hash key used to cache ``text``'s embedding.
+
+    Args:
+        text: The exact string that will be embedded.
+
+    Returns:
+        A 16-byte blake2b hex digest — stable across processes and models, so
+        the same text always maps to the same cache key.
+    """
     return hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
 
 
-_CACHE_FILE = "embeddings.npz"
+CACHE_FILE = "embeddings.npz"
 
 
 class Embedder:
@@ -117,7 +126,7 @@ class Embedder:
 
     @staticmethod
     def _cache_path(cache_dir: Path) -> Path:
-        return cache_dir / _CACHE_FILE
+        return cache_dir / CACHE_FILE
 
     @staticmethod
     def _parse_npz(
@@ -279,7 +288,7 @@ class Embedder:
         for i, text in enumerate(texts):
             if not text.strip():
                 continue
-            key = _hash(text)
+            key = hash_text(text)
             self._seen.add(key)
             cached = self._cache.get(key)
             if cached is not None:
