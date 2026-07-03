@@ -11,9 +11,9 @@ import typer
 from codecongruence import __version__
 from codecongruence.core.ai_context import write_ai_context_files
 from codecongruence.core.baseline import apply_baseline, baseline_path, load_baseline, save_baseline
-from codecongruence.core.config import default_config_path, load_config
+from codecongruence.core.config import CodeCongruenceConfig, default_config_path, load_config
 from codecongruence.core.embedder import Embedder
-from codecongruence.core.git import current_repo_root
+from codecongruence.core.git import current_repo_root, main_worktree_root
 from codecongruence.core.runner import RuleRunner, UnknownRuleError
 from codecongruence.reporters import JsonReporter, TextReporter
 
@@ -82,7 +82,7 @@ docs_files = ["CHANGELOG.md", "README.md"]
 """
 
 
-def _ensure_gitignore_entry(repo_root: Path, entry: str = ".codecongruence") -> bool:
+def ensure_gitignore_entry(repo_root: Path, entry: str = ".codecongruence") -> bool:
     """Add ``entry`` to ``.gitignore`` if absent.
 
     Args:
@@ -103,13 +103,62 @@ def _ensure_gitignore_entry(repo_root: Path, entry: str = ".codecongruence") -> 
     return True
 
 
-def _version_callback(value: bool) -> None:
+async def make_embedder(config: CodeCongruenceConfig, repo_root: Path) -> Embedder:
+    """Build the run's :class:`Embedder` with a worktree-aware vector cache.
+
+    The writable vector cache lives in the current worktree
+    (``<repo_root>/.codecongruence``). The primary worktree's cache is layered
+    underneath as a read-only *base*, so a linked git worktree reuses the
+    primary's warm embeddings instead of cold-starting on a fresh checkout. The
+    :class:`Embedder` ignores the base when it resolves to the local cache —
+    i.e. when this run *is* the primary worktree, which then owns its cache
+    directly. Both caches are content-hash keyed, so a base entry is valid for
+    any worktree.
+
+    Args:
+        config: Loaded configuration for this run.
+        repo_root: Root of the current worktree.
+
+    Returns:
+        A configured :class:`Embedder` ready to embed.
+    """
+    local_cache_dir = repo_root / ".codecongruence"
+    main_root = await main_worktree_root(cwd=repo_root)
+    base_cache_dir = None if main_root is None else main_root / ".codecongruence"
+    model_cache_dir = Path.home() / ".cache" / "codecongruence"
+    return Embedder(
+        model_name=config.model,
+        cache_dir=local_cache_dir,
+        base_cache_dir=base_cache_dir,
+        model_cache_dir=model_cache_dir,
+        threads=config.threads,
+        cache_ttl_days=config.cache_ttl_days,
+    )
+
+
+def version_callback(value: bool) -> None:
+    """Print the version and exit when ``--version`` is passed.
+
+    Args:
+        value: ``True`` when the ``--version`` flag was supplied.
+
+    Raises:
+        typer.Exit: After printing the version, to stop CLI processing.
+    """
     if value:
         typer.echo(f"codecongruence {__version__}")
         raise typer.Exit
 
 
-def _purge_models_callback(value: bool) -> None:
+def purge_models_callback(value: bool) -> None:
+    """Delete the downloaded model cache and exit when ``--purge-models`` is passed.
+
+    Args:
+        value: ``True`` when the ``--purge-models`` flag was supplied.
+
+    Raises:
+        typer.Exit: After deleting the cache, to stop CLI processing.
+    """
     if value:
         import shutil  # noqa: PLC0415
 
@@ -188,7 +237,7 @@ def main(
         bool,
         typer.Option(
             "--purge-models",
-            callback=_purge_models_callback,
+            callback=purge_models_callback,
             is_eager=True,
             help="Delete the model cache (~/.cache/codecongruence) and exit.",
         ),
@@ -197,7 +246,7 @@ def main(
         bool,
         typer.Option(
             "--version",
-            callback=_version_callback,
+            callback=version_callback,
             is_eager=True,
             help="Print version and exit.",
         ),
@@ -213,7 +262,7 @@ def main(
         return
 
     exit_code = asyncio.run(
-        _run(
+        run(
             rule=rule,
             config_path=config_path,
             all_files=all_files,
@@ -280,7 +329,7 @@ def init_cmd(
         raise typer.Exit(code=1)
     target.write_text(DEFAULT_TOML, encoding="utf-8")
     typer.echo(f"wrote {target}")
-    if _ensure_gitignore_entry(target.parent):
+    if ensure_gitignore_entry(target.parent):
         typer.echo("added .codecongruence to .gitignore")
 
     for ai_path, written in write_ai_context_files(repo_root, force=force):
@@ -293,10 +342,16 @@ def init_cmd(
     if no_download:
         return
 
-    asyncio.run(_init_setup(no_embed=no_embed))
+    asyncio.run(init_setup(no_embed=no_embed))
 
 
-async def _init_setup(*, no_embed: bool) -> None:
+async def init_setup(*, no_embed: bool) -> None:
+    """Download the model and warm the embedding cache for ``init``.
+
+    Args:
+        no_embed: When ``True``, skip the initial full-repo embedding pass and
+            only ensure the model is downloaded and ready.
+    """
     from rich.console import Console  # noqa: PLC0415
     from rich.progress import (  # noqa: PLC0415
         BarColumn,
@@ -310,15 +365,7 @@ async def _init_setup(*, no_embed: bool) -> None:
 
     repo_root = await current_repo_root()
     config = load_config(repo_root=repo_root)
-    cache_dir = repo_root / ".codecongruence"
-    model_cache_dir = Path.home() / ".cache" / "codecongruence"
-    embedder = Embedder(
-        model_name=config.model,
-        cache_dir=cache_dir,
-        model_cache_dir=model_cache_dir,
-        threads=config.threads,
-        cache_ttl_days=config.cache_ttl_days,
-    )
+    embedder = await make_embedder(config, repo_root)
 
     # Model download may emit fastembed / huggingface_hub tqdm output to stderr.
     # Print a plain line before so it doesn't interleave with any live display.
@@ -351,7 +398,7 @@ async def _init_setup(*, no_embed: bool) -> None:
     console.print(f"[green]✓[/green] cached {embedder.cache_size} embedding(s) ({added} new)")
 
 
-async def _run(
+async def run(
     *,
     rule: str | None,
     config_path: Path | None,
@@ -362,6 +409,22 @@ async def _run(
     update_baseline: bool = False,
     debug: bool = False,
 ) -> int:
+    """Run the selected rules over the changed files and report violations.
+
+    Args:
+        rule: Single rule id to run, or ``None`` to run every default rule.
+        config_path: Explicit config file, or ``None`` to auto-discover.
+        all_files: Scan every tracked file instead of only the staged diff.
+        output_format: ``text`` or ``json`` reporter selection.
+        verbose: Print an OK line and the violation table on success.
+        include_unstaged: Also check unstaged working-tree changes.
+        update_baseline: Save all current violations as the new baseline, then exit.
+        debug: Emit per-rule debug logging to stderr.
+
+    Returns:
+        Process exit code — ``0`` when clean, and non-zero when violations are
+        found or the rule selection is invalid.
+    """
     if debug:
         import logging  # noqa: PLC0415
 
@@ -376,15 +439,7 @@ async def _run(
     # Rules read changed-file paths relative to the repo root, so anchor the
     # process there — otherwise running from a subdirectory checks nothing.
     os.chdir(repo_root)
-    cache_dir = repo_root / ".codecongruence"
-    model_cache_dir = Path.home() / ".cache" / "codecongruence"
-    embedder = Embedder(
-        model_name=config.model,
-        cache_dir=cache_dir,
-        model_cache_dir=model_cache_dir,
-        threads=config.threads,
-        cache_ttl_days=config.cache_ttl_days,
-    )
+    embedder = await make_embedder(config, repo_root)
     runner = RuleRunner(config, embedder)
     try:
         runner.select_rules(rule)
