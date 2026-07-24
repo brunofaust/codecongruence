@@ -11,7 +11,7 @@ CLAUDE.md, PR descriptions, CHANGELOG) using **local** sentence embeddings via
 
 ## Conventions
 
-- **Python 3.11+** syntax. Async-first where I/O happens. `asyncio.TaskGroup`
+- **Python 3.12+** syntax. Async-first where I/O happens. `asyncio.TaskGroup`
     for parallel rules; never `gather` without a TaskGroup.
 - **Type hints on everything.** `mypy --strict` must pass.
 - **Frozen dataclasses** for internal data structures.
