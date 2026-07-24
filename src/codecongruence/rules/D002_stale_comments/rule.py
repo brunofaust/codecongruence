@@ -5,8 +5,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from codecongruence.parsers import get_parser
-from codecongruence.rules.base import RuleViolation
+from codecongruence.rules.base import (
+    RuleViolation,
+    iter_parsed,
+    resolve_threshold,
+    similarity_violation,
+)
 
 log = logging.getLogger(__name__)
 
@@ -48,49 +52,31 @@ class StaleCommentsRule:
         Returns:
             Sequence of :class:`RuleViolation` for each stale comment.
         """
-        threshold = self.default_threshold if config.threshold is None else config.threshold
+        threshold = resolve_threshold(self, config)
         ctx_lines = int(getattr(config, "context_lines", 5) or 5)
 
         violations: list[RuleViolation] = []
-        for cf in changed_files:
-            parser = get_parser(cf.path.suffix)
-            if parser is None:
-                continue
-            try:
-                source = cf.abs_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-
+        for cf, parser, source in iter_parsed(changed_files):
             for comment in cf.iter_comments(parser, source, context_lines=ctx_lines):
                 if cf.added_ranges and not cf.overlaps(comment.line, comment.line + ctx_lines):
                     log.debug("D002 SKIP not_in_diff %s:%d", cf.path, comment.line)
                     continue
 
-                sim = await embedder.similarity(comment.text, comment.following_code)
-                log.debug(
-                    "D002 %s:%d  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",
-                    cf.path,
-                    comment.line,
-                    comment.text[:120],
-                    comment.following_code[:120],
-                    sim,
-                    threshold,
-                    "FAIL" if sim < threshold else "PASS",
+                violation = await similarity_violation(
+                    embedder,
+                    comment.text,
+                    comment.following_code,
+                    rule=self,
+                    threshold=threshold,
+                    file_path=str(cf.path),
+                    line=comment.line,
+                    log_context=f"D002 {cf.path}:{comment.line}",
+                    message_template=(
+                        f"Comment doesn't match next {ctx_lines} lines "
+                        "(similarity {sim:.2f} < {threshold:.2f}). "
+                        "Update or remove the comment."
+                    ),
                 )
-                if sim < threshold:
-                    violations.append(
-                        RuleViolation(
-                            rule_id=self.rule_id,
-                            code=self.code,
-                            file_path=str(cf.path),
-                            line=comment.line,
-                            message=(
-                                f"Comment doesn't match next {ctx_lines} lines "
-                                f"(similarity {sim:.2f} < {threshold:.2f}). "
-                                "Update or remove the comment."
-                            ),
-                            similarity=sim,
-                            threshold=threshold,
-                        )
-                    )
+                if violation is not None:
+                    violations.append(violation)
         return violations

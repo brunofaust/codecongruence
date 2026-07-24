@@ -56,6 +56,11 @@
 - Backend protocol (`EmbeddingBackend`) so tests inject a deterministic
     bag-of-words fake instead of downloading 130 MB of ONNX weights.
 - Per-run content-hash cache: identical text embedded once.
+- Bounded inference batches: every backend call passes
+    `batch_size=embed_batch_size` (config, default 16). Peak RSS scales with the
+    largest single ONNX batch and the runtime's arena never shrinks, so
+    fastembed's default of 256 would pin ~5.7 GB per process; 16 stays under
+    ~1 GB at the same throughput.
 - Worktree-aware disk cache: an optional read-only `base_cache_dir` (the primary
     worktree's `.codecongruence/`) is layered under the writable per-worktree
     cache, so linked worktrees reuse warm embeddings and `save()` persists only
@@ -67,6 +72,16 @@
     to absorb float32 round-off.
 - `embed()` returns an `(n, d)` `float32` matrix even when some inputs are
     empty (those rows are zero-filled).
+
+### Rule helpers (`rules/base.py`)
+
+Shared building blocks so each rule holds only its own logic:
+`resolve_threshold` (config override or rule default), `iter_parsed`
+(yields `(changed_file, parser, source)`, skipping unsupported/unreadable
+files), and `similarity_violation` (embed → debug-log → build a
+`RuleViolation` when similarity falls below the threshold). C003 keeps its
+custom batched pairwise comparison; D006 is structural and uses only
+`iter_parsed`.
 
 ### `RuleRunner` (`core/runner.py`)
 

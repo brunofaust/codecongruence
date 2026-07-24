@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 import os
 from typing import TYPE_CHECKING
 
 from codecongruence.core.git import ChangedFile, git_diff_unified
-from codecongruence.rules.base import RuleViolation
-
-log = logging.getLogger(__name__)
+from codecongruence.rules.base import RuleViolation, resolve_threshold, similarity_violation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -52,35 +49,24 @@ class PrDescriptionVsDiffRule:
         if not body or not changed_files:
             return []
 
-        threshold = self.default_threshold if config.threshold is None else config.threshold
+        threshold = resolve_threshold(self, config)
         diff = (await git_diff_unified(cwd=changed_files[0].repo_root)).strip()
         if not diff:
             return []
 
-        sim = await embedder.similarity(body, diff)
-        log.debug(
-            "D004 pr_body_len=%d  diff_len=%d  sim=%.3f  threshold=%.3f  %s",
-            len(body),
-            len(diff),
-            sim,
-            threshold,
-            "FAIL" if sim < threshold else "PASS",
+        violation = await similarity_violation(
+            embedder,
+            body,
+            diff,
+            rule=self,
+            threshold=threshold,
+            file_path="<PR description>",
+            line=None,
+            log_context=f"D004 pr_body({len(body)} chars) vs diff({len(diff)} chars)",
+            message_template=(
+                "PR description doesn't match the diff "
+                "(similarity {sim:.2f} < {threshold:.2f}). "
+                "Expand the description so reviewers know what changed and why."
+            ),
         )
-        if sim >= threshold:
-            return []
-
-        return [
-            RuleViolation(
-                rule_id=self.rule_id,
-                code=self.code,
-                file_path="<PR description>",
-                line=None,
-                message=(
-                    f"PR description doesn't match the diff "
-                    f"(similarity {sim:.2f} < {threshold:.2f}). "
-                    "Expand the description so reviewers know what changed and why."
-                ),
-                similarity=sim,
-                threshold=threshold,
-            )
-        ]
+        return [] if violation is None else [violation]

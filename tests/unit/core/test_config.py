@@ -51,6 +51,23 @@ cache_ttl_days = 7
     assert cfg.cache_ttl_days == 7
 
 
+def test_loads_embed_batch_size(tmp_path: Path) -> None:
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+embed_batch_size = 8
+        """.strip()
+    )
+    cfg = load_config(repo_root=tmp_path)
+    assert cfg.embed_batch_size == 8
+
+
+def test_embed_batch_size_defaults_to_16(tmp_path: Path) -> None:
+    (tmp_path / "codecongruence.toml").write_text("[codecongruence]\nparallel = false\n")
+    cfg = load_config(repo_root=tmp_path)
+    assert cfg.embed_batch_size == 16
+
+
 def test_cache_ttl_days_defaults_to_30(tmp_path: Path) -> None:
     (tmp_path / "codecongruence.toml").write_text("[codecongruence]\nparallel = false\n")
     cfg = load_config(repo_root=tmp_path)

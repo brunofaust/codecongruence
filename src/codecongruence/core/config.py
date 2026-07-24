@@ -25,12 +25,26 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
+    "DEFAULT_CACHE_TTL_DAYS",
+    "DEFAULT_EMBED_BATCH_SIZE",
+    "DEFAULT_MODEL",
     "CodeCongruenceConfig",
     "RuleConfig",
     "default_config_path",
     "discover_config_path",
     "load_config",
 ]
+
+DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
+
+# Texts per ONNX inference call. Peak RSS scales with the largest single batch
+# (padded to the longest sequence), and ONNX Runtime's memory arena keeps that
+# high-water mark for the life of the process: fastembed's default of 256 peaks
+# at ~5.7 GB on realistic function bodies, 16 peaks at ~0.9 GB with no
+# measurable throughput cost.
+DEFAULT_EMBED_BATCH_SIZE = 16
+
+DEFAULT_CACHE_TTL_DAYS = 30
 
 
 class RuleConfig(BaseModel):
@@ -62,11 +76,16 @@ class CodeCongruenceConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    model: str = "BAAI/bge-small-en-v1.5"
+    model: str = DEFAULT_MODEL
     parallel: bool = True
     threads: int | None = None
+    embed_batch_size: int = Field(
+        default=DEFAULT_EMBED_BATCH_SIZE,
+        ge=1,
+        description="Max texts per ONNX inference call; caps peak activation memory",
+    )
     cache_ttl_days: int = Field(
-        default=30,
+        default=DEFAULT_CACHE_TTL_DAYS,
         description="TTL for embedding cache entries in days; 0 disables TTL eviction",
     )
     exclude: list[str] = Field(default_factory=list)
@@ -189,14 +208,10 @@ def load_config(path: Path | None = None, repo_root: Path | None = None) -> Code
         name: RuleConfig.model_validate(payload) for name, payload in rules_payload.items()
     }
 
-    return CodeCongruenceConfig(
-        model=section.get("model", "BAAI/bge-small-en-v1.5"),
-        parallel=section.get("parallel", True),
-        threads=section.get("threads", None),
-        cache_ttl_days=section.get("cache_ttl_days", 30),
-        exclude=section.get("exclude", []),
-        exclude_functions=section.get("exclude_functions", []),
-        rules=rules,
-        repo_root=root,
-        source=cfg_path,
-    )
+    # Absent keys fall back to the model's field defaults — the single source of
+    # truth — instead of restating each default literal here.
+    payload = {key: value for key, value in section.items() if key != "rules"}
+    payload["rules"] = rules
+    payload["repo_root"] = root
+    payload["source"] = cfg_path
+    return CodeCongruenceConfig.model_validate(payload)

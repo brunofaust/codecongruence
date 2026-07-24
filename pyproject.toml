@@ -133,7 +133,7 @@ skips = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 plugins = [ "pydantic.mypy" ]
 strict = true
 warn_unreachable = true
@@ -227,6 +227,7 @@ ignore_names = [
   "enabled_rules", # CodeCongruenceConfig public API
   "extra",         # RuleConfig helper, accessed by rules via getattr
   "documents",     # EmbeddingBackend Protocol method parameter
+  "batch_size",    # EmbeddingBackend Protocol method parameter
 ]
 paths = [ "src/codecongruence" ]
 verbose = false

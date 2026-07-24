@@ -19,6 +19,12 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
+from codecongruence.core.config import (
+    DEFAULT_CACHE_TTL_DAYS,
+    DEFAULT_EMBED_BATCH_SIZE,
+    DEFAULT_MODEL,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from pathlib import Path
@@ -34,8 +40,17 @@ log = logging.getLogger(__name__)
 class EmbeddingBackend(Protocol):
     """Minimal protocol implemented by ``fastembed.TextEmbedding``."""
 
-    def embed(self, documents: Sequence[str]) -> Iterable[NDArray[np.float32]]:
-        """Embed a batch of documents into float32 vectors."""
+    def embed(
+        self, documents: Sequence[str], batch_size: int = DEFAULT_EMBED_BATCH_SIZE
+    ) -> Iterable[NDArray[np.float32]]:
+        """Embed a batch of documents into float32 vectors.
+
+        Args:
+            documents: Texts to embed.
+            batch_size: Maximum documents per ONNX inference call. Bounds peak
+                activation memory — ONNX Runtime's arena never returns the
+                buffers of its largest batch to the OS.
+        """
         ...
 
 
@@ -81,6 +96,8 @@ class Embedder:
             Pass ``~/.cache/codecongruence`` for a persistent cross-run cache.
         threads: ONNX Runtime inter-op thread count forwarded to fastembed.
             ``None`` lets fastembed choose (usually one thread per CPU core).
+        embed_batch_size: Maximum texts per ONNX inference call. Caps peak
+            activation memory — see :data:`DEFAULT_EMBED_BATCH_SIZE`.
         cache_ttl_days: Entries not accessed within this many days are
             discarded at load time. Set to ``0`` to disable TTL eviction.
             :meth:`compact` removes entries not accessed in the current run;
@@ -89,18 +106,20 @@ class Embedder:
 
     def __init__(
         self,
-        model_name: str = "BAAI/bge-small-en-v1.5",
+        model_name: str = DEFAULT_MODEL,
         *,
         backend: EmbeddingBackend | None = None,
         cache_dir: Path | None = None,
         base_cache_dir: Path | None = None,
         model_cache_dir: Path | None = None,
         threads: int | None = None,
-        cache_ttl_days: int = 30,
+        embed_batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
+        cache_ttl_days: int = DEFAULT_CACHE_TTL_DAYS,
     ) -> None:
         """Initialize the embedder. See class docstring for parameter details."""
         self.model_name = model_name
         self._backend: EmbeddingBackend | None = backend
+        self._embed_batch_size = embed_batch_size
         self._cache: dict[str, NDArray[np.float32]] = {}
         self._last_used: dict[str, float] = {}
         self._seen: set[str] = set()
@@ -231,7 +250,7 @@ class Embedder:
             try:
                 self._cache_path(cache_dir).unlink(missing_ok=True)
             except OSError:
-                log.debug("could not remove stale embedding cache in %s", cache_dir)
+                log.warning("could not remove stale embedding cache in %s", cache_dir)
             return
         vecs = [self._cache[h] for h in hashes]
         max_dim = max(int(v.shape[0]) for v in vecs)
@@ -250,7 +269,7 @@ class Embedder:
                 last_used=last_used_arr,
             )
         except OSError:
-            log.debug("could not persist embedding cache to %s", cache_dir)
+            log.warning("could not persist embedding cache to %s", cache_dir)
 
     def _ensure_backend(self) -> EmbeddingBackend:
         if self._backend is None:
@@ -301,7 +320,7 @@ class Embedder:
 
         if missing_text:
             backend = self._ensure_backend()
-            raw = list(backend.embed(missing_text))
+            raw = list(backend.embed(missing_text, batch_size=self._embed_batch_size))
             for pos, (slot, vec) in enumerate(zip(missing_idx, raw, strict=True)):
                 key = missing_keys[pos]
                 arr = np.asarray(vec, dtype=np.float32)

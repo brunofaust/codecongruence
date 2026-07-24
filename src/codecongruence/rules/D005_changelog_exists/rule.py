@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from codecongruence.core.git import ChangedFile, git_diff
-from codecongruence.rules.base import RuleViolation
+from codecongruence.rules.base import RuleViolation, resolve_threshold, similarity_violation
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class DocsOnChangeRule:
         docs_files: list[Path] = [
             Path(f) for f in (getattr(config, "docs_files", ["CHANGELOG.md"]) or ["CHANGELOG.md"])
         ]
-        threshold = self.default_threshold if config.threshold is None else config.threshold
+        threshold = resolve_threshold(self, config)
 
         # Step 1: Any trigger_paths file in the staged set?
         code_files = [cf for cf in changed_files if any(fnmatch(str(cf.path), g) for g in triggers)]
@@ -116,31 +116,21 @@ class DocsOnChangeRule:
             return []
 
         combined_doc_diff = "\n".join(changed_doc_diffs)
-        sim = await embedder.similarity(code_diff, combined_doc_diff)
-        log.debug(
-            "D005 left=code_diff(%d chars)  right=doc_diff(%d chars)  sim=%.3f  threshold=%.3f  %s",
-            len(code_diff),
-            len(combined_doc_diff),
-            sim,
-            threshold,
-            "FAIL" if sim < threshold else "PASS",
+        violation = await similarity_violation(
+            embedder,
+            code_diff,
+            combined_doc_diff,
+            rule=self,
+            threshold=threshold,
+            file_path=str(docs_files[0]),
+            line=None,
+            log_context=(
+                f"D005 code_diff({len(code_diff)} chars) vs doc_diff({len(combined_doc_diff)} chars)"
+            ),
+            message_template=(
+                "Docs updated but not aligned with the code diff "
+                "(similarity {sim:.2f} < {threshold:.2f}). "
+                "Make sure your docs describe what actually changed."
+            ),
         )
-
-        if sim < threshold:
-            return [
-                RuleViolation(
-                    rule_id=self.rule_id,
-                    code=self.code,
-                    file_path=str(docs_files[0]),
-                    line=None,
-                    message=(
-                        f"Docs updated but not aligned with the code diff "
-                        f"(similarity {sim:.2f} < {threshold:.2f}). "
-                        "Make sure your docs describe what actually changed."
-                    ),
-                    similarity=sim,
-                    threshold=threshold,
-                )
-            ]
-
-        return []
+        return [] if violation is None else [violation]

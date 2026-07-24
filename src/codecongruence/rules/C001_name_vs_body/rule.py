@@ -5,9 +5,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated, split_identifier
-from codecongruence.rules.base import RuleViolation, strip_comments
+from codecongruence.rules.base import (
+    RuleViolation,
+    iter_parsed,
+    resolve_threshold,
+    similarity_violation,
+    strip_comments,
+)
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +63,7 @@ class NameVsBodyRule:
         Returns:
             Sequence of :class:`RuleViolation` for each mismatched function.
         """
-        threshold = self.default_threshold if config.threshold is None else config.threshold
+        threshold = resolve_threshold(self, config)
         min_body_statement_count = int(getattr(config, "min_body_statement_count", 2) or 2)
         include_comments = bool(getattr(config, "include_comments", False))
         ignore: frozenset[str] = frozenset(
@@ -66,15 +71,7 @@ class NameVsBodyRule:
         )
 
         violations: list[RuleViolation] = []
-        for cf in changed_files:
-            parser = get_parser(cf.path.suffix)
-            if parser is None:
-                continue
-            try:
-                source = cf.abs_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-
+        for cf, parser, source in iter_parsed(changed_files):
             for func in cf.iter_functions(parser, source):
                 if func.name in ignore or func.name.startswith("test_"):
                     log.debug("C001 SKIP ignored_name %s::%s", cf.path, func.qualified_name)
@@ -103,31 +100,21 @@ class NameVsBodyRule:
                     continue
 
                 body = func.body_source if include_comments else strip_comments(func.body_source)
-                sim = await embedder.similarity(name_expanded, body)
-                log.debug(
-                    "C001 %s::%s  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",
-                    cf.path,
-                    func.qualified_name,
+                violation = await similarity_violation(
+                    embedder,
                     name_expanded,
-                    body[:120],
-                    sim,
-                    threshold,
-                    "FAIL" if sim < threshold else "PASS",
+                    body,
+                    rule=self,
+                    threshold=threshold,
+                    file_path=str(cf.path),
+                    line=func.line_start,
+                    log_context=f"C001 {cf.path}::{func.qualified_name}",
+                    message_template=(
+                        f"Name drift on `{func.qualified_name}` "
+                        "(similarity {sim:.2f} < {threshold:.2f}). "
+                        "Rename it or change the body so the two agree."
+                    ),
                 )
-                if sim < threshold:
-                    violations.append(
-                        RuleViolation(
-                            rule_id=self.rule_id,
-                            code=self.code,
-                            file_path=str(cf.path),
-                            line=func.line_start,
-                            message=(
-                                f"Name drift on `{func.qualified_name}` "
-                                f"(similarity {sim:.2f} < {threshold:.2f}). "
-                                "Rename it or change the body so the two agree."
-                            ),
-                            similarity=sim,
-                            threshold=threshold,
-                        )
-                    )
+                if violation is not None:
+                    violations.append(violation)
         return violations

@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from codecongruence.core.git import ChangedFile, git_diff
-from codecongruence.rules.base import RuleViolation
-
-log = logging.getLogger(__name__)
+from codecongruence.rules.base import RuleViolation, resolve_threshold, similarity_violation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -49,7 +46,7 @@ class ClaudeMdVsDiffRule:
         Returns:
             Sequence of :class:`RuleViolation`; at most one per run.
         """
-        threshold = self.default_threshold if config.threshold is None else config.threshold
+        threshold = resolve_threshold(self, config)
         code_globs: list[str] = list(getattr(config, "code_paths", ["src/**"]) or ["src/**"])
         docs_files: list[str] = list(getattr(config, "docs_files", ["CLAUDE.md"]) or ["CLAUDE.md"])
 
@@ -68,30 +65,19 @@ class ClaudeMdVsDiffRule:
         if not code_diff_text or not doc_diff_text:
             return []
 
-        sim = await embedder.similarity(code_diff_text, doc_diff_text)
-        log.debug(
-            "D003 code_diff_len=%d  doc_diff_len=%d  sim=%.3f  threshold=%.3f  %s",
-            len(code_diff_text),
-            len(doc_diff_text),
-            sim,
-            threshold,
-            "FAIL" if sim < threshold else "PASS",
+        violation = await similarity_violation(
+            embedder,
+            code_diff_text,
+            doc_diff_text,
+            rule=self,
+            threshold=threshold,
+            file_path=str(Path(docs_files[0])),
+            line=None,
+            log_context=f"D003 code_diff({len(code_diff_text)} chars) vs doc_diff({len(doc_diff_text)} chars)",
+            message_template=(
+                "Docs diff doesn't match code diff (similarity {sim:.2f} < {threshold:.2f}). "
+                "Either the CLAUDE.md update is unrelated to the code change, "
+                "or the code change wasn't documented."
+            ),
         )
-        if sim >= threshold:
-            return []
-
-        return [
-            RuleViolation(
-                rule_id=self.rule_id,
-                code=self.code,
-                file_path=str(Path(docs_files[0])),
-                line=None,
-                message=(
-                    f"Docs diff doesn't match code diff (similarity {sim:.2f} < {threshold:.2f}). "
-                    "Either the CLAUDE.md update is unrelated to the code change, "
-                    "or the code change wasn't documented."
-                ),
-                similarity=sim,
-                threshold=threshold,
-            )
-        ]
+        return [] if violation is None else [violation]

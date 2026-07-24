@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from codecongruence.core.config import CodeCongruenceConfig
+    from codecongruence.core.config import CodeCongruenceConfig, RuleConfig
     from codecongruence.rules.base import Rule, RuleViolation
 
 __all__ = ["RuleRunner", "RunResult", "UnknownRuleError", "default_rules", "run_rules"]
@@ -209,32 +209,25 @@ class RuleRunner:
             )
         selected = self.select_rules(only)
 
+        prepared: list[tuple[Rule, list[ChangedFile], RuleConfig]] = []
+        for rule in selected:
+            rule_cfg = self.config.rule(rule.rule_id)
+            filtered = _apply_function_excludes(
+                _apply_file_excludes(changed, rule_cfg.exclude),
+                rule_cfg.exclude_functions,
+            )
+            prepared.append((rule, filtered, rule_cfg))
+
         rule_results: list[tuple[Rule, Sequence[RuleViolation]]] = []
-        if self.config.parallel and selected:
+        if self.config.parallel and prepared:
             async with asyncio.TaskGroup() as group:
                 tasks = [
-                    group.create_task(
-                        rule.check(
-                            _apply_function_excludes(
-                                _apply_file_excludes(
-                                    changed, self.config.rule(rule.rule_id).exclude
-                                ),
-                                self.config.rule(rule.rule_id).exclude_functions,
-                            ),
-                            self.embedder,
-                            self.config.rule(rule.rule_id),
-                        )
-                    )
-                    for rule in selected
+                    group.create_task(rule.check(filtered, self.embedder, rule_cfg))
+                    for rule, filtered, rule_cfg in prepared
                 ]
             rule_results = list(zip(selected, (t.result() for t in tasks), strict=True))
         else:
-            for rule in selected:
-                rule_cfg = self.config.rule(rule.rule_id)
-                filtered = _apply_function_excludes(
-                    _apply_file_excludes(changed, rule_cfg.exclude),
-                    rule_cfg.exclude_functions,
-                )
+            for rule, filtered, rule_cfg in prepared:
                 rule_results.append((rule, await rule.check(filtered, self.embedder, rule_cfg)))
 
         flat: list[RuleViolation] = []

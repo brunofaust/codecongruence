@@ -50,3 +50,19 @@ async def test_backend_protocol_accepted() -> None:
     emb = Embedder(model_name="x", backend=backend)
     sim = await emb.similarity("hello world", "hello world")
     assert sim == 1.0
+
+
+def test_backend_receives_default_batch_size() -> None:
+    """Peak-memory cap: every backend call must carry the batch-size bound."""
+    backend = BagOfWordsBackend()
+    emb = Embedder(model_name="x", backend=backend)
+    emb.embed(["one two", "three four"])
+    assert backend.seen_batch_sizes == [16]
+
+
+def test_backend_receives_configured_batch_size() -> None:
+    backend = BagOfWordsBackend()
+    emb = Embedder(model_name="x", backend=backend, embed_batch_size=4)
+    emb.embed(["one two", "three four"])
+    emb.embed(["five six"])
+    assert backend.seen_batch_sizes == [4, 4]
