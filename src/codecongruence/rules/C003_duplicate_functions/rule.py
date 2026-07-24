@@ -8,9 +8,8 @@ from itertools import combinations
 from typing import TYPE_CHECKING
 
 from codecongruence.core.git import ChangedFile, all_tracked_files, current_repo_root
-from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
-from codecongruence.rules.base import RuleViolation
+from codecongruence.rules.base import RuleViolation, iter_parsed, resolve_threshold
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +71,7 @@ class DuplicateFunctionsRule:
             One :class:`RuleViolation` per duplicate pair, reported on the
             function that appears first by file path then line number.
         """
-        threshold = self.default_threshold if config.threshold is None else config.threshold
+        threshold = resolve_threshold(self, config)
         scope = str(getattr(config, "scope", "staged") or "staged")
         min_stmts = int(getattr(config, "min_body_statement_count", 3) or 3)
 
@@ -148,14 +147,7 @@ class DuplicateFunctionsRule:
         seen: set[tuple[str, int]] = set()
         entries: list[_FuncEntry] = []
 
-        for cf in files:
-            parser = get_parser(cf.path.suffix)
-            if parser is None:
-                continue
-            try:
-                source = cf.abs_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
+        for cf, parser, source in iter_parsed(files):
             for func in cf.iter_functions(parser, source):
                 if is_overload_decorated(func.decorators) or is_dataclass_init(func):
                     continue

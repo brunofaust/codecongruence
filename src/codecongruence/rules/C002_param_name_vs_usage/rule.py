@@ -6,9 +6,14 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated, split_identifier
-from codecongruence.rules.base import RuleViolation, strip_comments
+from codecongruence.rules.base import (
+    RuleViolation,
+    iter_parsed,
+    resolve_threshold,
+    similarity_violation,
+    strip_comments,
+)
 
 log = logging.getLogger(__name__)
 
@@ -50,21 +55,13 @@ class ParamNameVsUsageRule:
         Returns:
             Sequence of :class:`RuleViolation` for each mismatched parameter.
         """
-        threshold = self.default_threshold if config.threshold is None else config.threshold
+        threshold = resolve_threshold(self, config)
         min_body_statement_count = int(getattr(config, "min_body_statement_count", 2) or 2)
         min_param_name_chars = int(getattr(config, "min_param_name_chars", 2) or 2)
         include_comments = bool(getattr(config, "include_comments", True))
 
         violations: list[RuleViolation] = []
-        for cf in changed_files:
-            parser = get_parser(cf.path.suffix)
-            if parser is None:
-                continue
-            try:
-                source = cf.abs_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-
+        for cf, parser, source in iter_parsed(changed_files):
             for func in cf.iter_functions(parser, source):
                 if is_overload_decorated(func.decorators) or is_dataclass_init(func):
                     log.debug(
@@ -109,35 +106,24 @@ class ParamNameVsUsageRule:
 
                     annotation, default = details_map.get(clean, ("", ""))
                     left = " ".join(filter(None, [split_identifier(clean), annotation, default]))
-                    sim = await embedder.similarity(left, usage)
-                    log.debug(
-                        "C002 %s::%s  param=%s  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",
-                        cf.path,
-                        func.qualified_name,
-                        clean,
+                    violation = await similarity_violation(
+                        embedder,
                         left,
-                        usage[:120],
-                        sim,
-                        threshold,
-                        "FAIL" if sim < threshold else "PASS",
+                        usage,
+                        rule=self,
+                        threshold=threshold,
+                        file_path=str(cf.path),
+                        line=func.line_start,
+                        log_context=f"C002 {cf.path}::{func.qualified_name} param={clean}",
+                        message_template=(
+                            f"Parameter `{param}` in `{func.qualified_name}` "
+                            "doesn't match its usage "
+                            "(similarity {sim:.2f} < {threshold:.2f}). "
+                            "Rename the parameter or change how it is used."
+                        ),
                     )
-                    if sim < threshold:
-                        violations.append(
-                            RuleViolation(
-                                rule_id=self.rule_id,
-                                code=self.code,
-                                file_path=str(cf.path),
-                                line=func.line_start,
-                                message=(
-                                    f"Parameter `{param}` in `{func.qualified_name}` "
-                                    f"doesn't match its usage "
-                                    f"(similarity {sim:.2f} < {threshold:.2f}). "
-                                    "Rename the parameter or change how it is used."
-                                ),
-                                similarity=sim,
-                                threshold=threshold,
-                            )
-                        )
+                    if violation is not None:
+                        violations.append(violation)
         return violations
 
 

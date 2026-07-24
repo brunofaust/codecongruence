@@ -73,6 +73,16 @@
 - `embed()` returns an `(n, d)` `float32` matrix even when some inputs are
     empty (those rows are zero-filled).
 
+### Rule helpers (`rules/base.py`)
+
+Shared building blocks so each rule holds only its own logic:
+`resolve_threshold` (config override or rule default), `iter_parsed`
+(yields `(changed_file, parser, source)`, skipping unsupported/unreadable
+files), and `similarity_violation` (embed → debug-log → build a
+`RuleViolation` when similarity falls below the threshold). C003 keeps its
+custom batched pairwise comparison; D006 is structural and uses only
+`iter_parsed`.
+
 ### `RuleRunner` (`core/runner.py`)
 
 - `gather_changed()` resolves staged files + their added line ranges via

@@ -6,9 +6,8 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
-from codecongruence.rules.base import RuleViolation
+from codecongruence.rules.base import RuleViolation, iter_parsed
 
 log = logging.getLogger(__name__)
 
@@ -54,15 +53,7 @@ class ParamsInDocstringRule:
         ignore_dunders: bool = bool(getattr(config, "ignore_dunders", True))
 
         violations: list[RuleViolation] = []
-        for cf in changed_files:
-            parser = get_parser(cf.path.suffix)
-            if parser is None:
-                continue
-            try:
-                source = cf.abs_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-
+        for cf, parser, source in iter_parsed(changed_files):
             for func in cf.iter_functions(parser, source):
                 if not func.docstring:
                     log.debug("D006 SKIP no_docstring %s::%s", cf.path, func.qualified_name)

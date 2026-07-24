@@ -5,9 +5,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from codecongruence.parsers import get_parser
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
-from codecongruence.rules.base import RuleViolation, strip_comments
+from codecongruence.rules.base import (
+    RuleViolation,
+    iter_parsed,
+    resolve_threshold,
+    similarity_violation,
+    strip_comments,
+)
 
 log = logging.getLogger(__name__)
 
@@ -49,21 +54,13 @@ class DocstringVsBodyRule:
         Returns:
             Sequence of :class:`RuleViolation` for each drifted docstring.
         """
-        threshold = self.default_threshold if config.threshold is None else config.threshold
+        threshold = resolve_threshold(self, config)
         min_stmts = int(getattr(config, "min_body_statement_count", 3) or 3)
         min_doc = int(getattr(config, "min_docstring_chars", 10) or 10)
         include_comments = bool(getattr(config, "include_comments", False))
 
         violations: list[RuleViolation] = []
-        for cf in changed_files:
-            parser = get_parser(cf.path.suffix)
-            if parser is None:
-                continue
-            try:
-                source = cf.abs_path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-
+        for cf, parser, source in iter_parsed(changed_files):
             for func in cf.iter_functions(parser, source):
                 if not func.docstring or len(func.docstring) < min_doc:
                     log.debug("D001 SKIP no_docstring %s::%s", cf.path, func.qualified_name)
@@ -87,31 +84,21 @@ class DocstringVsBodyRule:
                     continue
 
                 body = func.body_source if include_comments else strip_comments(func.body_source)
-                sim = await embedder.similarity(func.docstring, body)
-                log.debug(
-                    "D001 %s::%s  left=%r  right=%r  sim=%.3f  threshold=%.3f  %s",
-                    cf.path,
-                    func.qualified_name,
-                    func.docstring[:120],
-                    body[:120],
-                    sim,
-                    threshold,
-                    "FAIL" if sim < threshold else "PASS",
+                violation = await similarity_violation(
+                    embedder,
+                    func.docstring,
+                    body,
+                    rule=self,
+                    threshold=threshold,
+                    file_path=str(cf.path),
+                    line=func.line_start,
+                    log_context=f"D001 {cf.path}::{func.qualified_name}",
+                    message_template=(
+                        f"Docstring drift on `{func.qualified_name}` "
+                        "(similarity {sim:.2f} < {threshold:.2f}). "
+                        "Update the docstring to match what the body actually does."
+                    ),
                 )
-                if sim < threshold:
-                    violations.append(
-                        RuleViolation(
-                            rule_id=self.rule_id,
-                            code=self.code,
-                            file_path=str(cf.path),
-                            line=func.line_start,
-                            message=(
-                                f"Docstring drift on `{func.qualified_name}` "
-                                f"(similarity {sim:.2f} < {threshold:.2f}). "
-                                "Update the docstring to match what the body actually does."
-                            ),
-                            similarity=sim,
-                            threshold=threshold,
-                        )
-                    )
+                if violation is not None:
+                    violations.append(violation)
         return violations

@@ -19,6 +19,12 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
+from codecongruence.core.config import (
+    DEFAULT_CACHE_TTL_DAYS,
+    DEFAULT_EMBED_BATCH_SIZE,
+    DEFAULT_MODEL,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from pathlib import Path
@@ -26,7 +32,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-__all__ = ["DEFAULT_EMBED_BATCH_SIZE", "Embedder", "EmbeddingBackend"]
+__all__ = ["Embedder", "EmbeddingBackend"]
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +41,7 @@ class EmbeddingBackend(Protocol):
     """Minimal protocol implemented by ``fastembed.TextEmbedding``."""
 
     def embed(
-        self, documents: Sequence[str], batch_size: int = 16
+        self, documents: Sequence[str], batch_size: int = DEFAULT_EMBED_BATCH_SIZE
     ) -> Iterable[NDArray[np.float32]]:
         """Embed a batch of documents into float32 vectors.
 
@@ -62,13 +68,6 @@ def hash_text(text: str) -> str:
 
 
 CACHE_FILE = "embeddings.npz"
-
-# Texts per ONNX inference call. Peak RSS scales with the largest single batch
-# (padded to the longest sequence), and ONNX Runtime's memory arena keeps that
-# high-water mark for the life of the process: fastembed's default of 256 peaks
-# at ~5.7 GB on realistic function bodies, 16 peaks at ~0.9 GB with no
-# measurable throughput cost.
-DEFAULT_EMBED_BATCH_SIZE = 16
 
 
 class Embedder:
@@ -107,7 +106,7 @@ class Embedder:
 
     def __init__(
         self,
-        model_name: str = "BAAI/bge-small-en-v1.5",
+        model_name: str = DEFAULT_MODEL,
         *,
         backend: EmbeddingBackend | None = None,
         cache_dir: Path | None = None,
@@ -115,7 +114,7 @@ class Embedder:
         model_cache_dir: Path | None = None,
         threads: int | None = None,
         embed_batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
-        cache_ttl_days: int = 30,
+        cache_ttl_days: int = DEFAULT_CACHE_TTL_DAYS,
     ) -> None:
         """Initialize the embedder. See class docstring for parameter details."""
         self.model_name = model_name
@@ -251,7 +250,7 @@ class Embedder:
             try:
                 self._cache_path(cache_dir).unlink(missing_ok=True)
             except OSError:
-                log.debug("could not remove stale embedding cache in %s", cache_dir)
+                log.warning("could not remove stale embedding cache in %s", cache_dir)
             return
         vecs = [self._cache[h] for h in hashes]
         max_dim = max(int(v.shape[0]) for v in vecs)
@@ -270,7 +269,7 @@ class Embedder:
                 last_used=last_used_arr,
             )
         except OSError:
-            log.debug("could not persist embedding cache to %s", cache_dir)
+            log.warning("could not persist embedding cache to %s", cache_dir)
 
     def _ensure_backend(self) -> EmbeddingBackend:
         if self._backend is None:
