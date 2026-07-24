@@ -1,6 +1,73 @@
 # CHANGELOG
 
 
+## v0.7.0 (2026-07-24)
+
+### Build System
+
+- **deps**: Upgrade locked python dependencies
+  ([`621fb90`](https://github.com/brunofaust/codecongruence/commit/621fb90c979266f5532231e46f08d5283cccad39))
+
+26 packages upgraded within existing pyproject constraints via uv lock --upgrade; suite green (204
+  passed) on new versions.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01MALyFpeEeK1JZfW8i3xUU5
+
+### Chores
+
+- **quality**: Restore rule imports, allowlist protocol param, target mypy at 3.12
+  ([`91e64bb`](https://github.com/brunofaust/codecongruence/commit/91e64bb19d8b4a3bc394c7ed997072200577ed6d))
+
+Restore RuleViolation import in D003 and D004 rules (needed for return type annotations in
+  Sequence[RuleViolation]). Add vulture allowlist for EmbeddingBackend.batch_size Protocol param.
+  Target mypy at Python 3.12 to match resolved venv + numpy 2.5.1 PEP 695 type stubs.
+
+### Features
+
+- **deps**: Raise dependency floors to latest and require Python 3.12+
+  ([`40d4a0a`](https://github.com/brunofaust/codecongruence/commit/40d4a0a178ebb6c439a0101a70340e8f1eefcc67))
+
+Floors in [project.dependencies] and the dev group now match the latest releases (numpy 2.5.1,
+  pydantic 2.13, fastembed 0.8, ...); Python 3.11 support is dropped since numpy >=2.5.1 requires
+  3.12; prek/pyupgrade/ruff/mypy all now target the 3.12 baseline; 211 tests and both prek stages
+  green.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01MALyFpeEeK1JZfW8i3xUU5
+
+### Performance Improvements
+
+- **embedder**: Cap ONNX inference batch size to bound peak memory
+  ([`1d32d57`](https://github.com/brunofaust/codecongruence/commit/1d32d57873ca887aa37982168882fb3da645cc8e))
+
+fastembed's default batch_size=256 let a single embed call allocate ~5.7 GB of activation buffers
+  that ONNX Runtime's arena never returns, so parallel codecongruence processes each pinned 6 GB.
+  New embed_batch_size config option (default 16) caps peak RSS under ~1 GB with no measurable
+  throughput cost.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01MALyFpeEeK1JZfW8i3xUU5
+
+### Refactoring
+
+- **rules**: Extract shared rule helpers and single-source config defaults
+  ([`e391953`](https://github.com/brunofaust/codecongruence/commit/e39195328ce19d17d4abbca6beadbc247d909288))
+
+Extract shared helpers (resolve_threshold, iter_parsed, similarity_violation) into base.py to
+  consolidate ~150 duplicated lines across 9 rule modules. Single-source config defaults (model,
+  embed_batch_size, cache_ttl_days) as constants in config.py; load_config uses model_validate for
+  Pydantic defaults. Bump cache-persistence logging to warning. Runner precomputes rule config once,
+  shared between parallel and sequential branches.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01MALyFpeEeK1JZfW8i3xUU5
+
+
 ## v0.6.0 (2026-07-03)
 
 ### Bug Fixes
@@ -111,6 +178,13 @@ actions/checkout@v4 and astral-sh/setup-uv@v3 run on Node 20, which GitHub force
   to the immutable v8.2.0 tag since the project stopped publishing moving tags.
 
 https://claude.ai/code/session_01BhLoSGi2ipWdTNhagAMYCY
+
+- **prek**: Exclude the generated CHANGELOG.md from mdformat and typos
+  ([`c83453c`](https://github.com/brunofaust/codecongruence/commit/c83453c71872b0443b6c3759b8b864b85cee601d))
+
+python-semantic-release regenerates the full CHANGELOG on every release; its markdown formatting and
+  commit-SHA links (short hex hashes read as typos) fail mdformat and typos. Exclude it — its format
+  is PSR's contract, not hand-edited.
 
 - **release**: Auto-bump the docs rev examples on every release
   ([`b8b78a9`](https://github.com/brunofaust/codecongruence/commit/b8b78a9883c1ab0d39a29d23ecc787026327691d))
