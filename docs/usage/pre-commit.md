@@ -8,7 +8,7 @@ standard `pre-commit` workflow Just Works.
 ```yaml
 repos:
   - repo: https://github.com/brunofaust/codecongruence
-    rev: v0.6.0          # or any released tag
+    rev: v0.7.0          # or any released tag
     hooks:
       - id: codecongruence
 ```
