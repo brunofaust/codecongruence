@@ -98,6 +98,7 @@ class BagOfWordsBackend:
 
     def __init__(self) -> None:
         self._vocab: dict[str, int] = {}
+        self.seen_batch_sizes: list[int] = []
 
     def _embed_one(self, text: str) -> NDArray[np.float32]:
         toks = _tokenize(text)
@@ -112,7 +113,8 @@ class BagOfWordsBackend:
             vec /= norm
         return vec
 
-    def embed(self, documents: Sequence[str]) -> list[NDArray[np.float32]]:
+    def embed(self, documents: Sequence[str], batch_size: int = 16) -> list[NDArray[np.float32]]:
+        self.seen_batch_sizes.append(batch_size)
         return [self._embed_one(t) for t in documents]
 
 

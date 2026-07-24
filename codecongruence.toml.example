@@ -44,6 +44,15 @@ parallel = true
 #
 # threads = null
 
+# Maximum texts per ONNX inference call.  Peak process memory scales with the
+# largest single batch (all texts padded to the longest sequence), and ONNX
+# Runtime's arena keeps that high-water mark for the life of the process:
+# fastembed's default of 256 peaks at ~5.7 GB on realistic function bodies,
+# 16 peaks at ~0.9 GB with no measurable throughput cost.  Raise only if you
+# have memory to spare; lower to 4-8 for memory-constrained CI.
+#
+# embed_batch_size = 16
+
 # Global file / folder globs applied to EVERY rule.
 # Supports standard fnmatch wildcards.  Per-rule exclude lists are ADDED on top
 # of these.

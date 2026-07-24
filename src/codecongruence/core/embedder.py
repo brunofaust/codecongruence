@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-__all__ = ["Embedder", "EmbeddingBackend"]
+__all__ = ["DEFAULT_EMBED_BATCH_SIZE", "Embedder", "EmbeddingBackend"]
 
 log = logging.getLogger(__name__)
 
@@ -34,8 +34,17 @@ log = logging.getLogger(__name__)
 class EmbeddingBackend(Protocol):
     """Minimal protocol implemented by ``fastembed.TextEmbedding``."""
 
-    def embed(self, documents: Sequence[str]) -> Iterable[NDArray[np.float32]]:
-        """Embed a batch of documents into float32 vectors."""
+    def embed(
+        self, documents: Sequence[str], batch_size: int = 16
+    ) -> Iterable[NDArray[np.float32]]:
+        """Embed a batch of documents into float32 vectors.
+
+        Args:
+            documents: Texts to embed.
+            batch_size: Maximum documents per ONNX inference call. Bounds peak
+                activation memory — ONNX Runtime's arena never returns the
+                buffers of its largest batch to the OS.
+        """
         ...
 
 
@@ -53,6 +62,13 @@ def hash_text(text: str) -> str:
 
 
 CACHE_FILE = "embeddings.npz"
+
+# Texts per ONNX inference call. Peak RSS scales with the largest single batch
+# (padded to the longest sequence), and ONNX Runtime's memory arena keeps that
+# high-water mark for the life of the process: fastembed's default of 256 peaks
+# at ~5.7 GB on realistic function bodies, 16 peaks at ~0.9 GB with no
+# measurable throughput cost.
+DEFAULT_EMBED_BATCH_SIZE = 16
 
 
 class Embedder:
@@ -81,6 +97,8 @@ class Embedder:
             Pass ``~/.cache/codecongruence`` for a persistent cross-run cache.
         threads: ONNX Runtime inter-op thread count forwarded to fastembed.
             ``None`` lets fastembed choose (usually one thread per CPU core).
+        embed_batch_size: Maximum texts per ONNX inference call. Caps peak
+            activation memory — see :data:`DEFAULT_EMBED_BATCH_SIZE`.
         cache_ttl_days: Entries not accessed within this many days are
             discarded at load time. Set to ``0`` to disable TTL eviction.
             :meth:`compact` removes entries not accessed in the current run;
@@ -96,11 +114,13 @@ class Embedder:
         base_cache_dir: Path | None = None,
         model_cache_dir: Path | None = None,
         threads: int | None = None,
+        embed_batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
         cache_ttl_days: int = 30,
     ) -> None:
         """Initialize the embedder. See class docstring for parameter details."""
         self.model_name = model_name
         self._backend: EmbeddingBackend | None = backend
+        self._embed_batch_size = embed_batch_size
         self._cache: dict[str, NDArray[np.float32]] = {}
         self._last_used: dict[str, float] = {}
         self._seen: set[str] = set()
@@ -301,7 +321,7 @@ class Embedder:
 
         if missing_text:
             backend = self._ensure_backend()
-            raw = list(backend.embed(missing_text))
+            raw = list(backend.embed(missing_text, batch_size=self._embed_batch_size))
             for pos, (slot, vec) in enumerate(zip(missing_idx, raw, strict=True)):
                 key = missing_keys[pos]
                 arr = np.asarray(vec, dtype=np.float32)

@@ -65,6 +65,11 @@ class CodeCongruenceConfig(BaseModel):
     model: str = "BAAI/bge-small-en-v1.5"
     parallel: bool = True
     threads: int | None = None
+    embed_batch_size: int = Field(
+        default=16,
+        ge=1,
+        description="Max texts per ONNX inference call; caps peak activation memory",
+    )
     cache_ttl_days: int = Field(
         default=30,
         description="TTL for embedding cache entries in days; 0 disables TTL eviction",
@@ -193,6 +198,7 @@ def load_config(path: Path | None = None, repo_root: Path | None = None) -> Code
         model=section.get("model", "BAAI/bge-small-en-v1.5"),
         parallel=section.get("parallel", True),
         threads=section.get("threads", None),
+        embed_batch_size=section.get("embed_batch_size", 16),
         cache_ttl_days=section.get("cache_ttl_days", 30),
         exclude=section.get("exclude", []),
         exclude_functions=section.get("exclude_functions", []),

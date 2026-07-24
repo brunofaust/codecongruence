@@ -41,6 +41,7 @@ DEFAULT_TOML = """\
 [codecongruence]
 model = "BAAI/bge-small-en-v1.5"
 parallel = true
+embed_batch_size = 16
 cache_ttl_days = 30
 
 [rules.docstring_vs_body]
@@ -132,6 +133,7 @@ async def make_embedder(config: CodeCongruenceConfig, repo_root: Path) -> Embedd
         base_cache_dir=base_cache_dir,
         model_cache_dir=model_cache_dir,
         threads=config.threads,
+        embed_batch_size=config.embed_batch_size,
         cache_ttl_days=config.cache_ttl_days,
     )
 

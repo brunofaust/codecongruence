@@ -138,6 +138,7 @@ Create `codecongruence.toml` at your repo root:
 
 ```toml
 model = "BAAI/bge-small-en-v1.5"
+embed_batch_size = 16
 cache_ttl_days = 30
 
 [rules.docstring_vs_body]
@@ -146,6 +147,12 @@ threshold = 0.65
 [rules.name_vs_body]
 threshold = 0.70
 ```
+
+`embed_batch_size` caps how many texts go into a single ONNX inference call
+(default: 16). Peak process memory scales with the largest single batch —
+fastembed's own default of 256 peaks at ~5.7 GB on realistic code, while 16
+stays under ~1 GB with no measurable throughput cost. Lower it to 4-8 for
+memory-constrained CI; raise it only if you have memory to spare.
 
 ## Cache Garbage Collection
 
