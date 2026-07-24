@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from codecongruence.core.git import ChangedFile, git_diff
-from codecongruence.rules.base import resolve_threshold, similarity_violation
+from codecongruence.rules.base import RuleViolation, resolve_threshold, similarity_violation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

@@ -121,7 +121,9 @@ def resolve_threshold(rule: Rule, config: RuleConfig) -> float:
     return rule.default_threshold if config.threshold is None else config.threshold
 
 
-def iter_parsed(changed_files: Sequence[ChangedFile]) -> Iterator[tuple[ChangedFile, LanguageParser, str]]:
+def iter_parsed(
+    changed_files: Sequence[ChangedFile],
+) -> Iterator[tuple[ChangedFile, LanguageParser, str]]:
     """Yield ``(changed_file, parser, source)`` for every parseable, readable file.
 
     Files with an unsupported extension or that cannot be read are skipped —
