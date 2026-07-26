@@ -164,7 +164,7 @@ wheels = [
 
 [[package]]
 name = "codecongruence"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastembed" },
@@ -194,7 +194,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5.1" },
     { name = "pydantic", specifier = ">=2.13" },
     { name = "pydantic-settings", specifier = ">=2.14" },
-    { name = "rich", specifier = ">=15.0" },
+    { name = "rich", specifier = ">=15" },
     { name = "tree-sitter", specifier = ">=0.26" },
     { name = "tree-sitter-javascript", specifier = ">=0.25" },
     { name = "tree-sitter-python", specifier = ">=0.25" },
