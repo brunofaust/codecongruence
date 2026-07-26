@@ -10,17 +10,17 @@ matching fix strategy below.
 
 ## Rules
 
-| Code | Rule                     | What it catches                                              |
-| ---- | ------------------------ | ------------------------------------------------------------ |
-| C001 | `name_vs_body`           | Function name contradicts what the body actually does        |
-| C002 | `param_name_vs_usage`    | Parameter name clashes with how it is used in the body       |
-| C003 | `duplicate_functions`    | Two functions with similar names and near-identical bodies   |
-| D001 | `docstring_vs_body`      | Docstring describes stale behaviour after a refactor         |
-| D002 | `stale_comments`         | Inline comment describes behaviour the code no longer has    |
-| D003 | `claude_md_vs_diff`      | Unrelated CLAUDE.md edit buried inside a large code change   |
-| D004 | `pr_description_vs_diff` | PR description does not match the actual diff (CI-only)      |
-| D005 | `docs_on_change`         | `src/` changed but no docs file updated (CHANGELOG, README…) |
-| D006 | `params_in_docstring`    | Docstring exists but a parameter is not documented in it     |
+| Code | Rule                     | What it catches                                                              |
+| ---- | ------------------------ | ---------------------------------------------------------------------------- |
+| C001 | `name_vs_body`           | Function name contradicts what the body actually does                        |
+| C002 | `param_name_vs_usage`    | Parameter name clashes with how it is used in the body                       |
+| C003 | `duplicate_functions`    | Two functions with similar names and near-identical bodies                   |
+| D001 | `docstring_vs_body`      | Docstring describes stale behaviour after a refactor                         |
+| D002 | `stale_comments`         | Inline comment describes behaviour the code no longer has                    |
+| D003 | `claude_md_vs_diff`      | Unrelated CLAUDE.md edit buried inside a large code change                   |
+| D004 | `pr_description_vs_diff` | PR description does not match the actual diff (CI-only)                      |
+| D005 | `docs_on_change`         | `src/` changed but no docs file updated (CHANGELOG, README…, off by default) |
+| D006 | `params_in_docstring`    | Docstring exists but a parameter is not documented in it                     |
 
 ### Fix strategies
 
@@ -31,7 +31,7 @@ matching fix strategy below.
 - **D002** — delete the stale comment or rewrite it to describe the current behaviour.
 - **D003** — split the commit (CLAUDE.md change alone), or expand CLAUDE.md to actually document the code change.
 - **D004** — write a PR description that covers every meaningful change in the diff.
-- **D005** — add a CHANGELOG entry or README note explaining what changed in `src/`.
+- **D005** — if enabled, add a CHANGELOG entry or README note explaining what changed in `src/`.
 - **D006** — add the missing parameter to the `Args:` section of the docstring.
 
 ## Reading violations

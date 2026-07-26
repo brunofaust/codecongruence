@@ -83,7 +83,7 @@ enabled = true
 threshold = 0.20
 
 [rules.docs_on_change]
-enabled = true
+enabled = false   # opt-in; disabled by default, see D005 README
 threshold = 0.20
 trigger_paths = ["src/**"]
 docs_files = ["CHANGELOG.md", "README.md"]

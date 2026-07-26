@@ -281,11 +281,16 @@ threshold = 0.25
 #   2. Semantic — when threshold > 0, the combined doc diff must be
 #      semantically similar to the combined code diff.  Set threshold = 0.0 to
 #      disable the semantic stage and only enforce the structural check.
+#
+# Off by default — requiring a docs_files touch (e.g. CHANGELOG.md) on every
+# src/ change causes frequent merge conflicts on that file across parallel
+# PRs, and commit/PR history already serves as the changelog. Opt in if you
+# want the structural nudge anyway.
 # ==============================================================================
 
 [rules.docs_on_change]
 
-enabled = true
+enabled = false   # opt-in
 
 # Cosine-similarity threshold for the semantic stage (stage 2).
 # Set to 0.0 to skip stage 2 entirely — only require that a doc file changed,

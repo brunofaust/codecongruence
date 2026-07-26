@@ -55,7 +55,7 @@ threshold = 0.20
 context_lines = 5
 
 [rules.docs_on_change]
-enabled = true
+enabled = false   # opt-in; disabled by default, see D005 README
 threshold = 0.20
 trigger_paths = ["src/**"]
 docs_files = ["README.md"]
