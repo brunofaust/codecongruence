@@ -152,6 +152,23 @@ class RuleRunner:
         ranges = await staged_changed_line_ranges(paths, cwd=root)
         return [ChangedFile(path=p, added_ranges=ranges.get(p, ()), repo_root=root) for p in paths]
 
+    def _is_enabled(self, rule: Rule) -> bool:
+        """Return whether ``rule`` runs given the loaded config.
+
+        A rule with no ``[rules.<id>]`` section falls back to its own
+        ``default_enabled`` (``True`` unless the rule opts out), so an opt-in
+        rule stays off until a consumer asks for it. Writing the section at all
+        is treated as asking for it — that is what makes ``enabled`` meaningful
+        for a rule whose default is off.
+
+        Args:
+            rule: The rule whose enablement is being resolved.
+        """
+        configured = self.config.rules.get(rule.rule_id)
+        if configured is None:
+            return getattr(rule, "default_enabled", True)
+        return configured.enabled
+
     def select_rules(self, only: str | None) -> list[Rule]:
         """Return the rules a run will execute.
 
@@ -174,7 +191,7 @@ class RuleRunner:
                 valid = ", ".join(sorted(f"{r.code}/{r.rule_id}" for r in self.rules))
                 raise UnknownRuleError(f"unknown rule {only!r} (valid: {valid})")
             return matches
-        return [r for r in self.rules if self.config.rule(r.rule_id).enabled]
+        return [r for r in self.rules if self._is_enabled(r)]
 
     async def run(
         self,

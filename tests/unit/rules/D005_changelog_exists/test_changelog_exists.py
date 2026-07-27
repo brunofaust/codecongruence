@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from codecongruence.core.config import RuleConfig
 from codecongruence.core.git import ChangedFile
 from codecongruence.rules.D005_changelog_exists import DocsOnChangeRule
+from codecongruence.rules.D005_changelog_exists.rule import DEFAULT_DOCS_FILES
 from tests.conftest import base_git_env
 
 if TYPE_CHECKING:
@@ -135,3 +136,55 @@ def test_any_doc_file_satisfies_check(repo: Path, fake_embedder: Embedder) -> No
         os.chdir(cwd)
 
     assert out == []
+
+
+def test_default_docs_files_accepts_readme(repo: Path, fake_embedder: Embedder) -> None:
+    """With no docs_files configured, README.md alone satisfies the rule.
+
+    Every other test in this file passes docs_files explicitly, so nothing
+    exercised the fallback — which is how it drifted from the documented
+    default of ["CHANGELOG.md", "README.md"] to ["CHANGELOG.md"]. A repo with
+    no CHANGELOG.md (release notes from commit history) could then never
+    satisfy the rule.
+    """
+    src = repo / "src"
+    src.mkdir()
+    (src / "c.py").write_text("z = 1\n")
+    readme = repo / "README.md"
+    readme.write_text("# Project\n\nInitial.\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "seed")
+
+    (src / "c.py").write_text("z = 2\n")
+    readme.write_text("# Project\n\nUpdated.\n")
+    _git(repo, "add", ".")
+
+    # trigger_paths only — docs_files deliberately omitted so the default applies.
+    cfg = RuleConfig(threshold=0.0, **{"trigger_paths": ["src/**"]})
+    cwd = os.getcwd()
+    os.chdir(repo)
+    try:
+        out = asyncio.run(
+            DocsOnChangeRule().check(
+                [
+                    ChangedFile(path=Path("src/c.py"), added_ranges=()),
+                    ChangedFile(path=Path("README.md"), added_ranges=()),
+                ],
+                fake_embedder,
+                cfg,
+            )
+        )
+    finally:
+        os.chdir(cwd)
+
+    assert out == []
+
+
+def test_default_docs_files_matches_documented_default() -> None:
+    """The code default must match codecongruence.toml.example and the README."""
+    assert DEFAULT_DOCS_FILES == ("CHANGELOG.md", "README.md")
+
+
+def test_rule_is_opt_in() -> None:
+    """D005 declares itself disabled-by-default (see this rule's README)."""
+    assert DocsOnChangeRule.default_enabled is False

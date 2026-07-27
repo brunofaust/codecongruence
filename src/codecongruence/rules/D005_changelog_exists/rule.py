@@ -18,7 +18,14 @@ if TYPE_CHECKING:
     from codecongruence.core.config import RuleConfig
     from codecongruence.core.embedder import Embedder
 
-__all__ = ["DocsOnChangeRule"]
+__all__ = ["DEFAULT_DOCS_FILES", "DEFAULT_TRIGGER_PATHS", "DocsOnChangeRule"]
+
+#: Docs that satisfy the rule when the user configures no ``docs_files``.
+#: Must stay in sync with ``codecongruence.toml.example`` and this rule's README.
+DEFAULT_DOCS_FILES: tuple[str, ...] = ("CHANGELOG.md", "README.md")
+
+#: Globs that trigger the rule when the user configures no ``trigger_paths``.
+DEFAULT_TRIGGER_PATHS: tuple[str, ...] = ("src/**",)
 
 
 class DocsOnChangeRule:
@@ -30,12 +37,17 @@ class DocsOnChangeRule:
     2. Semantic — when ``threshold > 0``, the combined doc diff must be
        semantically similar to the combined code diff (same idea, different
        words is fine; completely unrelated is not).
+
+    Opt-in: requiring a ``docs_files`` touch on every ``src/`` change causes
+    frequent merge conflicts across parallel PRs, and commit history already
+    serves as the changelog. Enable it explicitly to get the structural nudge.
     """
 
     rule_id: str = "docs_on_change"
     code: str = "D005"
     description: str = "Documentation files should be updated when code changes."
     default_threshold: float = 0.20
+    default_enabled: bool = False
     docs_url: str = (
         "https://github.com/brunofaust/codecongruence/blob/main"
         "/src/codecongruence/rules/D005_changelog_exists/README.md"
@@ -57,9 +69,9 @@ class DocsOnChangeRule:
         Returns:
             Sequence of :class:`RuleViolation`; at most one per run.
         """
-        triggers: list[str] = list(getattr(config, "trigger_paths", ["src/**"]) or ["src/**"])
+        triggers: list[str] = list(getattr(config, "trigger_paths", None) or DEFAULT_TRIGGER_PATHS)
         docs_files: list[Path] = [
-            Path(f) for f in (getattr(config, "docs_files", ["CHANGELOG.md"]) or ["CHANGELOG.md"])
+            Path(f) for f in (getattr(config, "docs_files", None) or DEFAULT_DOCS_FILES)
         ]
         threshold = resolve_threshold(self, config)
 
