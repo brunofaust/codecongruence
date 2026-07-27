@@ -1,6 +1,65 @@
 # CHANGELOG
 
 
+## v0.7.1 (2026-07-27)
+
+### Bug Fixes
+
+- Exclude tests from duplicate_functions
+  ([`2236821`](https://github.com/brunofaust/codecongruence/commit/2236821fa0675c0865b725a85d910ce252933884))
+
+C003 compares functions within the staged set, so arrange-act-assert test siblings — which differ
+  only in input and expected result — score 0.92+ against each other. Deduping them into a
+  parametrized mega-test would hide which case broke.
+
+Because scope = "staged", the rule stays quiet in CI (a fresh checkout has nothing staged) and only
+  fires at commit time. The effect was a trap rather than a gate: merely touching an existing test
+  file surfaced long-standing sibling pairs the author never wrote, e.g.
+  test_explicit_rule_selects_even_when_disabled vs test_default_selection_respects_enabled_flag at
+  0.99.
+
+- **D005**: Disable docs_on_change rule by default
+  ([`d6494a5`](https://github.com/brunofaust/codecongruence/commit/d6494a5b86b4383f8ded8cc81054c9e8cd686aec))
+
+Requiring a docs file touch on every src/ change caused frequent merge conflicts across parallel
+  PRs, and duplicated what commit/PR history already provides. Keep the rule available as an opt-in
+  for repos that still want the structural nudge.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_016ZGHi2h3W583MnDbEo4uM1
+
+- **D005**: Implement documented opt-in default and docs_files fallback
+  ([`9c76fd7`](https://github.com/brunofaust/codecongruence/commit/9c76fd70b1f34c1c229647d5a8450786286a1a7b))
+
+Commit d6494a5 ("disable docs_on_change rule by default") updated the rule README,
+  codecongruence.toml.example and this repo's own config, but no code. RuleConfig.enabled defaults
+  to True and an absent [rules.docs_on_change] section resolved to a default RuleConfig, so every
+  consumer that had not configured the rule still ran it — the opposite of what the docs promised.
+
+Separately, the docs_files fallback was ["CHANGELOG.md"] while the example and rule README both
+  advertise ["CHANGELOG.md", "README.md"]. Both were introduced in the same commit (78cf69b), so
+  they diverged at birth. A repo that keeps release notes in commit history and has no CHANGELOG.md
+  could therefore never satisfy the rule: the only accepted doc did not exist.
+
+- Rule may declare `default_enabled`; applies only when the consumer has no [rules.<id>] section.
+  Read via getattr so third-party rules are unaffected. - DocsOnChangeRule sets default_enabled =
+  False. - DEFAULT_DOCS_FILES / DEFAULT_TRIGGER_PATHS module constants, declared once. - Tests: the
+  fallback path had no coverage at all, which is how it drifted.
+
+### Chores
+
+- **deps**: Sync uv.lock with pyproject.toml
+  ([`eb72572`](https://github.com/brunofaust/codecongruence/commit/eb725729366ee611feaaabd4e289dce0bba999e4))
+
+Lockfile still pinned the pre-release 0.6.0 version and an unnormalized rich specifier; regenerate
+  to match pyproject.toml.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_016ZGHi2h3W583MnDbEo4uM1
+
+
 ## v0.7.0 (2026-07-24)
 
 ### Build System
