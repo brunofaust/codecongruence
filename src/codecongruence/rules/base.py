@@ -84,6 +84,12 @@ class Rule(Protocol):
     Built-in rules use codes ``C00x`` (code-identifier drift) and ``D00x``
     (documentation / artifact drift). Third-party rules SHOULD pick a unique
     code prefix to avoid collisions (e.g. ``X001`` for an experimental plugin).
+
+    A rule MAY additionally define ``default_enabled: bool`` to declare itself
+    opt-in (``False``). It applies only when the consumer's config has no
+    ``[rules.<rule_id>]`` section; rules that omit the attribute default to
+    enabled. It is deliberately not a required member of this protocol so that
+    existing third-party rules keep satisfying it unchanged.
     """
 
     rule_id: str
