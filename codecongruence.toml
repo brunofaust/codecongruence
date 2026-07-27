@@ -65,3 +65,15 @@ enabled = true
 threshold = 0.92
 min_body_statement_count = 3
 scope = "staged"
+# Tests. Cases for one function are arrange-act-assert siblings by design — they
+# differ only in the input and the expected result, which is what makes them
+# readable. Deduping them (a shared parametrized mega-test) would HIDE which case
+# broke. Genuine setup duplication is still extracted into fixtures/helpers, which
+# is where the real dedup belongs.
+#
+# Without this, the rule is a trap rather than a gate: because scope = "staged",
+# it stays quiet in CI (nothing is staged in a fresh checkout) and only fires at
+# commit time — so simply touching an existing test file surfaces long-standing
+# sibling pairs (e.g. test_explicit_rule_selects_even_when_disabled vs
+# test_default_selection_respects_enabled_flag, 0.99) that the author did not write.
+exclude = ["tests/**"]
