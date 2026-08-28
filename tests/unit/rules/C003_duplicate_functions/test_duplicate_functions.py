@@ -187,3 +187,59 @@ def process(value):
     captured.clear()
     await DuplicateFunctionsRule().check(files, embedder, RuleConfig(include_comments=True))
     assert all("explanation" in body for body in captured)
+
+
+async def test_false_ignores_nested_docstring_edits_but_keeps_string_literals(
+    tmp_path: Path,
+) -> None:
+    """Nested documentation is ignored without deleting executable strings."""
+    source = """
+def outer(value):
+    def inner(item):
+        \"\"\"first nested explanation 日本語\"\"\"
+        def deep():
+            \"\"\"deep explanation\"\"\"
+            # deep nested comment
+            return \"literal # // payload\"
+        return \"literal payload\" + item + str(8 // 2) + deep()
+    def sibling():
+        \"\"\"sibling explanation\"\"\"
+        return value
+    def executable_literals():
+        # This is not a docstring because the first expression is an f-string.
+        f\"{value}\"
+        b\"bytes payload\"
+        return \"literal # // payload\"
+    def assignment_first():
+        marker = 1
+        def deeper():
+            \"\"\"deeper explanation\"\"\"
+            return marker
+        return deeper()
+    class Nested:
+        marker = 1
+        def method(self):
+            \"\"\"method explanation\"\"\"
+            # method nested comment
+            return self.marker
+    result = inner(value)
+    return result
+"""
+    changed = [ChangedFile(path=tmp_path / "module.py", added_ranges=())]
+    changed[0].path.write_text(source)
+    before = (await DuplicateFunctionsRule._collect(changed, "staged", 3, False))[0].body
+    revised_source = (
+        source
+        .replace("first nested explanation", "revised nested explanation")
+        .replace("deep explanation", "revised deep explanation")
+        .replace("sibling explanation", "revised sibling explanation")
+        .replace("deeper explanation", "revised deeper explanation")
+        .replace("method explanation", "revised method explanation")
+    )
+    changed[0].path.write_text(revised_source)
+    after = (await DuplicateFunctionsRule._collect(changed, "staged", 3, False))[0].body
+
+    assert before == after
+    assert "literal payload" in before
+    assert 'f"{value}"' in before
+    assert 'b"bytes payload"' in before

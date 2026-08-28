@@ -31,8 +31,9 @@ exclude = ["tests/**"]
 ```
 
 Set `include_comments = false` when comment-only edits must not change C003's
-similarity input. Python `#` and JavaScript/TypeScript `//` comments are removed
-using the same shared helper as C001 and D001.
+similarity input. Python `#` comments and nested definition docstrings are
+removed with tree-sitter, while JavaScript/TypeScript `//` comments use the
+shared line helper from C001 and D001.
 
 ### `scope`
 

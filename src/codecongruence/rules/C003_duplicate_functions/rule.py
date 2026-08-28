@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from codecongruence.core.git import ChangedFile, all_tracked_files, current_repo_root
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
+from codecongruence.parsers.python import strip_comments_and_nested_docstrings
 from codecongruence.rules.base import RuleViolation, iter_parsed, resolve_threshold, strip_comments
 
 log = logging.getLogger(__name__)
@@ -159,7 +160,12 @@ class DuplicateFunctionsRule:
                     continue
                 if func.body_statements < min_stmts:
                     continue
-                body = func.body_source if include_comments else strip_comments(func.body_source)
+                if include_comments:
+                    body = func.body_source
+                elif cf.path.suffix in {".py", ".pyi"}:
+                    body = strip_comments_and_nested_docstrings(func.body_source)
+                else:
+                    body = strip_comments(func.body_source)
                 body = body.strip()
                 if not body:
                     continue

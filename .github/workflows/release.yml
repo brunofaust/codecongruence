@@ -38,7 +38,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.2.0
 
       - name: Install python-semantic-release
-        run: uv tool install "python-semantic-release>=9,<10"
+        run: uv tool install --with "gitpython==3.1.59" "python-semantic-release==9.21.2"
 
       - name: Configure git identity
         run: |
@@ -85,7 +85,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.2.0
 
       - name: Install python-semantic-release
-        run: uv tool install "python-semantic-release>=9,<10"
+        run: uv tool install --with "gitpython==3.1.59" "python-semantic-release==9.21.2"
 
       - name: Configure git identity
         run: |
