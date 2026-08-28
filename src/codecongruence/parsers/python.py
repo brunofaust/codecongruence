@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast as _ast
 import re
+import textwrap
 from typing import TYPE_CHECKING
 
 import tree_sitter_python as tspython
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-__all__ = ["PythonParser"]
+__all__ = ["PythonParser", "strip_comments_and_nested_docstrings"]
 
 _LANGUAGE = Language(tspython.language())
 _PARSER = Parser(_LANGUAGE)
@@ -37,6 +38,49 @@ _PRAGMA_RE = re.compile(
 _TODO_RE = re.compile(r"^\s*#\s*(TODO|FIXME|NOTE|HACK|XXX)\b", re.IGNORECASE)
 
 _FUNC_TYPES = frozenset({"function_definition", "async_function_definition"})
+
+
+def strip_comments_and_nested_docstrings(source: str) -> tuple[str, int]:
+    """Remove Python comments and nested definition docstrings by byte span.
+
+    Returns:
+        The normalized source and its top-level statement count after comments
+        and nested definition docstrings are removed.
+    """
+    normalized = textwrap.dedent(source)
+    raw = normalized.encode("utf-8")
+    tree = _PARSER.parse(raw)
+    spans: list[tuple[int, int]] = []
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        if node.type == "comment":
+            spans.append((node.start_byte, node.end_byte))
+        elif node.type in _FUNC_TYPES or node.type == "class_definition":
+            body = node.child_by_field_name("body")
+            if body is not None and body.named_children:
+                first = next(
+                    (child for child in body.named_children if child.type != "comment"), None
+                )
+                if first is None or first.type != "expression_statement":
+                    continue
+                literal = first.text
+                if literal is None or not all(
+                    child.type == "string" for child in first.named_children
+                ):
+                    continue
+                try:
+                    is_docstring = isinstance(_ast.literal_eval(literal.decode("utf-8")), str)
+                except (ValueError, SyntaxError):
+                    is_docstring = False
+                if is_docstring and first.start_byte is not None and first.end_byte is not None:
+                    spans.append((first.start_byte, first.end_byte))
+    for start, end in sorted(spans, reverse=True):
+        raw = raw[:start] + raw[end:]
+    cleaned = "\n".join(line for line in raw.decode("utf-8").splitlines() if line.strip())
+    statement_count = sum(child.type != "comment" for child in tree.root_node.named_children)
+    return cleaned, statement_count
 
 
 # ---------------------------------------------------------------------------

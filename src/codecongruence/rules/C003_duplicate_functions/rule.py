@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 
 from codecongruence.core.git import ChangedFile, all_tracked_files, current_repo_root
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
-from codecongruence.rules.base import RuleViolation, iter_parsed, resolve_threshold
+from codecongruence.parsers.python import strip_comments_and_nested_docstrings
+from codecongruence.rules.base import RuleViolation, iter_parsed, resolve_threshold, strip_comments
 
 log = logging.getLogger(__name__)
 
@@ -74,8 +75,9 @@ class DuplicateFunctionsRule:
         threshold = resolve_threshold(self, config)
         scope = str(getattr(config, "scope", "staged") or "staged")
         min_stmts = int(getattr(config, "min_body_statement_count", 3) or 3)
+        include_comments = bool(getattr(config, "include_comments", True))
 
-        entries = await self._collect(changed_files, scope, min_stmts)
+        entries = await self._collect(changed_files, scope, min_stmts, include_comments)
         if len(entries) < _MIN_PAIR_COUNT:
             return []
 
@@ -122,6 +124,7 @@ class DuplicateFunctionsRule:
         changed_files: Sequence[ChangedFile],
         scope: str,
         min_stmts: int,
+        include_comments: bool = True,
     ) -> list[_FuncEntry]:
         """Return function entries to compare based on scope.
 
@@ -129,9 +132,13 @@ class DuplicateFunctionsRule:
             changed_files: Staged files from the runner.
             scope: ``"staged"`` or ``"full"``.
             min_stmts: Skip functions with fewer body statements than this.
+            include_comments: Whether inline comments remain in embedded bodies.
 
         Returns:
             Deduplicated list of :class:`_FuncEntry` ready for pairwise embedding.
+
+        The ``include_comments`` default preserves the pre-option behavior for
+        direct callers; normal rule execution supplies it from configuration.
         """
         if scope == "full":
             repo_root = changed_files[0].repo_root if changed_files else await current_repo_root()
@@ -153,7 +160,17 @@ class DuplicateFunctionsRule:
                     continue
                 if func.body_statements < min_stmts:
                     continue
-                body = func.body_source.strip()
+                if include_comments:
+                    body = func.body_source
+                    statement_count = func.body_statements
+                elif cf.path.suffix in {".py", ".pyi"}:
+                    body, statement_count = strip_comments_and_nested_docstrings(func.body_source)
+                else:
+                    body = strip_comments(func.body_source)
+                    statement_count = func.body_statements
+                if statement_count < min_stmts:
+                    continue
+                body = body.strip()
                 if not body:
                     continue
                 key = (str(cf.path), func.line_start)

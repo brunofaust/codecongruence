@@ -3,15 +3,19 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from codecongruence.core.config import RuleConfig
+from codecongruence.core.embedder import Embedder
 from codecongruence.core.git import ChangedFile
 from codecongruence.rules.C003_duplicate_functions import DuplicateFunctionsRule
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
     from pathlib import Path
 
-    from codecongruence.core.embedder import Embedder
+    from numpy.typing import NDArray
+
     from codecongruence.rules.base import RuleViolation
 
 
@@ -137,3 +141,123 @@ def load_user(user_id):
     # threshold=1.0 means nothing can match
     violations = _check([f], fake_embedder, threshold=1.0)
     assert violations == []
+
+
+async def test_include_comments_defaults_true_and_false_strips_them(tmp_path: Path) -> None:
+    """C003 config controls the exact body text sent to the embedder."""
+    source = """
+def process(value):
+    result = prepare(value)  # original explanation
+    result = validate(result)
+    return finish(result)
+"""
+    path = tmp_path / "module.py"
+    path.write_text(source)
+    changed = [ChangedFile(path=path, added_ranges=())]
+
+    default_entries = await DuplicateFunctionsRule._collect(changed, "staged", 3)
+    included_entries = await DuplicateFunctionsRule._collect(changed, "staged", 3, True)
+    stripped_entries = await DuplicateFunctionsRule._collect(changed, "staged", 3, False)
+
+    assert default_entries[0].body == included_entries[0].body
+    assert "original explanation" in included_entries[0].body
+    assert "original explanation" not in stripped_entries[0].body
+
+    path.write_text(source.replace("original explanation", "updated explanation"))
+    changed_entries = await DuplicateFunctionsRule._collect(changed, "staged", 3, False)
+    assert changed_entries[0].body == stripped_entries[0].body
+
+    captured: list[str] = []
+
+    class RecordingBackend:
+        """Capture documents sent through the public rule check."""
+
+        @staticmethod
+        def embed(documents: Sequence[str], batch_size: int = 16) -> Iterable[NDArray[np.float32]]:
+            captured.extend(documents)
+            return [np.ones(2, dtype=np.float32) for _ in documents]
+
+    second = tmp_path / "second.py"
+    second.write_text(source.replace("process", "execute"))
+    files = [ChangedFile(path=path, added_ranges=()), ChangedFile(path=second, added_ranges=())]
+    embedder = Embedder(model_name="fake", backend=RecordingBackend())
+    await DuplicateFunctionsRule().check(files, embedder, RuleConfig(include_comments=False))
+    assert all("explanation" not in body for body in captured)
+
+    captured.clear()
+    await DuplicateFunctionsRule().check(files, embedder, RuleConfig(include_comments=True))
+    assert all("explanation" in body for body in captured)
+
+
+async def test_false_ignores_nested_docstring_edits_but_keeps_string_literals(
+    tmp_path: Path,
+) -> None:
+    """Nested documentation is ignored without deleting executable strings."""
+    source = """
+def outer(value):
+    def inner(item):
+        \"\"\"first nested explanation 日本語\"\"\"
+        def deep():
+            \"\"\"deep explanation\"\"\"
+            # deep nested comment
+            return \"literal # // payload\"
+        return \"literal payload\" + item + str(8 // 2) + deep()
+    def sibling():
+        \"\"\"sibling explanation\"\"\"
+        return value
+    def executable_literals():
+        # This is not a docstring because the first expression is an f-string.
+        f\"{value}\"
+        b\"bytes payload\"
+        return \"literal # // payload\"
+    def assignment_first():
+        marker = 1
+        def deeper():
+            \"\"\"deeper explanation\"\"\"
+            return marker
+        return deeper()
+    class Nested:
+        marker = 1
+        def method(self):
+            \"\"\"method explanation\"\"\"
+            # method nested comment
+            return self.marker
+    result = inner(value)
+    return result
+"""
+    changed = [ChangedFile(path=tmp_path / "module.py", added_ranges=())]
+    changed[0].path.write_text(source)
+    before = (await DuplicateFunctionsRule._collect(changed, "staged", 3, False))[0].body
+    revised_source = (
+        source
+        .replace("first nested explanation", "revised nested explanation")
+        .replace("deep explanation", "revised deep explanation")
+        .replace("sibling explanation", "revised sibling explanation")
+        .replace("deeper explanation", "revised deeper explanation")
+        .replace("method explanation", "revised method explanation")
+    )
+    changed[0].path.write_text(revised_source)
+    after = (await DuplicateFunctionsRule._collect(changed, "staged", 3, False))[0].body
+
+    assert before == after
+    assert "literal payload" in before
+    assert 'f"{value}"' in before
+    assert 'b"bytes payload"' in before
+
+
+async def test_false_counts_code_statements_without_comments(tmp_path: Path) -> None:
+    """Comment-only changes cannot make a short Python body eligible."""
+    path = tmp_path / "module.py"
+    path.write_text("""
+def short():
+    value = 1  # commentary
+    return value
+""")
+    changed = [ChangedFile(path=path, added_ranges=())]
+
+    assert await DuplicateFunctionsRule._collect(changed, "staged", 3, False) == []
+    assert len(await DuplicateFunctionsRule._collect(changed, "staged", 2, False)) == 1
+
+    path.write_text(path.read_text().replace("  # commentary", ""))
+    assert await DuplicateFunctionsRule._collect(changed, "staged", 3, False) == []
+    assert len(await DuplicateFunctionsRule._collect(changed, "staged", 2, False)) == 1

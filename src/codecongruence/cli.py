@@ -66,6 +66,7 @@ threshold = 0.20
 [rules.duplicate_functions]
 enabled = true
 threshold = 0.92
+include_comments = true
 
 [rules.params_in_docstring]
 enabled = true
