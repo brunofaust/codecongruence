@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.8.0 (2026-08-28)
+
+### Bug Fixes
+
+- **c003**: Preserve code while excluding nested documentation (BD-797, BD-799)
+  ([`d6885a5`](https://github.com/brunofaust/codecongruence/commit/d6885a5303ac371ac90114d7d77e9b531414a292))
+
+### Features
+
+- **c003**: Support configurable comment inclusion (BD-797)
+  ([`01e4046`](https://github.com/brunofaust/codecongruence/commit/01e4046f657c54c4380ef7c4e3c7d66a3e368b32))
+
+
 ## v0.7.1 (2026-07-27)
 
 ### Bug Fixes
