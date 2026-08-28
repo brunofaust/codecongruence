@@ -151,6 +151,19 @@ include_comments = true
 # exclude_functions = ["*_handler"]
 
 # ==============================================================================
+# Rule: C003 — duplicate_functions
+#
+# Catches pairs of functions with different names whose bodies are semantically
+# equivalent. Comments are included by default for backwards compatibility.
+# ===============================================================================
+
+[rules.duplicate_functions]
+
+enabled = true
+threshold = 0.92
+include_comments = true
+
+# ===============================================================================
 # Rule: D001 — docstring_vs_body
 #
 # Catches docstrings that describe one thing while the function body does

@@ -11,8 +11,8 @@ false positives on legitimate similar-but-distinct functions.
 ## How it works
 
 1. Collect all functions from the files in scope (see `scope` config).
-1. Strip nothing — the full body is embedded as-is (structural patterns matter
-    here, unlike D001/C001 where comments inflate similarity).
+1. Include or strip inline comments according to `include_comments` (comments
+    are included by default for backwards compatibility).
 1. Embed all bodies in a single batch call (one ONNX pass regardless of how
     many functions are in scope).
 1. Compute pairwise cosine similarity in NumPy.
@@ -26,8 +26,13 @@ enabled = true
 threshold = 0.92
 scope = "staged"               # "staged" (default) or "full"
 min_body_statement_count = 3   # skip trivial one-liners
+include_comments = true        # include inline comments (default)
 exclude = ["tests/**"]
 ```
+
+Set `include_comments = false` when comment-only edits must not change C003's
+similarity input. Python `#` and JavaScript/TypeScript `//` comments are removed
+using the same shared helper as C001 and D001.
 
 ### `scope`
 

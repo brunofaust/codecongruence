@@ -3,15 +3,19 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from codecongruence.core.config import RuleConfig
+from codecongruence.core.embedder import Embedder
 from codecongruence.core.git import ChangedFile
 from codecongruence.rules.C003_duplicate_functions import DuplicateFunctionsRule
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
     from pathlib import Path
 
-    from codecongruence.core.embedder import Embedder
+    from numpy.typing import NDArray
+
     from codecongruence.rules.base import RuleViolation
 
 
@@ -137,3 +141,49 @@ def load_user(user_id):
     # threshold=1.0 means nothing can match
     violations = _check([f], fake_embedder, threshold=1.0)
     assert violations == []
+
+
+async def test_include_comments_defaults_true_and_false_strips_them(tmp_path: Path) -> None:
+    """C003 config controls the exact body text sent to the embedder."""
+    source = """
+def process(value):
+    result = prepare(value)  # original explanation
+    result = validate(result)
+    return finish(result)
+"""
+    path = tmp_path / "module.py"
+    path.write_text(source)
+    changed = [ChangedFile(path=path, added_ranges=())]
+
+    default_entries = await DuplicateFunctionsRule._collect(changed, "staged", 3)
+    included_entries = await DuplicateFunctionsRule._collect(changed, "staged", 3, True)
+    stripped_entries = await DuplicateFunctionsRule._collect(changed, "staged", 3, False)
+
+    assert default_entries[0].body == included_entries[0].body
+    assert "original explanation" in included_entries[0].body
+    assert "original explanation" not in stripped_entries[0].body
+
+    path.write_text(source.replace("original explanation", "updated explanation"))
+    changed_entries = await DuplicateFunctionsRule._collect(changed, "staged", 3, False)
+    assert changed_entries[0].body == stripped_entries[0].body
+
+    captured: list[str] = []
+
+    class RecordingBackend:
+        """Capture documents sent through the public rule check."""
+
+        @staticmethod
+        def embed(documents: Sequence[str], batch_size: int = 16) -> Iterable[NDArray[np.float32]]:
+            captured.extend(documents)
+            return [np.ones(2, dtype=np.float32) for _ in documents]
+
+    second = tmp_path / "second.py"
+    second.write_text(source.replace("process", "execute"))
+    files = [ChangedFile(path=path, added_ranges=()), ChangedFile(path=second, added_ranges=())]
+    embedder = Embedder(model_name="fake", backend=RecordingBackend())
+    await DuplicateFunctionsRule().check(files, embedder, RuleConfig(include_comments=False))
+    assert all("explanation" not in body for body in captured)
+
+    captured.clear()
+    await DuplicateFunctionsRule().check(files, embedder, RuleConfig(include_comments=True))
+    assert all("explanation" in body for body in captured)
