@@ -162,10 +162,14 @@ class DuplicateFunctionsRule:
                     continue
                 if include_comments:
                     body = func.body_source
+                    statement_count = func.body_statements
                 elif cf.path.suffix in {".py", ".pyi"}:
-                    body = strip_comments_and_nested_docstrings(func.body_source)
+                    body, statement_count = strip_comments_and_nested_docstrings(func.body_source)
                 else:
                     body = strip_comments(func.body_source)
+                    statement_count = func.body_statements
+                if statement_count < min_stmts:
+                    continue
                 body = body.strip()
                 if not body:
                     continue

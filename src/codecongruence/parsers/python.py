@@ -40,11 +40,12 @@ _TODO_RE = re.compile(r"^\s*#\s*(TODO|FIXME|NOTE|HACK|XXX)\b", re.IGNORECASE)
 _FUNC_TYPES = frozenset({"function_definition", "async_function_definition"})
 
 
-def strip_comments_and_nested_docstrings(source: str) -> str:
+def strip_comments_and_nested_docstrings(source: str) -> tuple[str, int]:
     """Remove Python comments and nested definition docstrings by byte span.
 
     Returns:
-        The source with comments and nested definition docstrings removed.
+        The normalized source and its top-level statement count after comments
+        and nested definition docstrings are removed.
     """
     normalized = textwrap.dedent(source)
     raw = normalized.encode("utf-8")
@@ -77,7 +78,9 @@ def strip_comments_and_nested_docstrings(source: str) -> str:
                     spans.append((first.start_byte, first.end_byte))
     for start, end in sorted(spans, reverse=True):
         raw = raw[:start] + raw[end:]
-    return "\n".join(line for line in raw.decode("utf-8").splitlines() if line.strip())
+    cleaned = "\n".join(line for line in raw.decode("utf-8").splitlines() if line.strip())
+    statement_count = sum(child.type != "comment" for child in tree.root_node.named_children)
+    return cleaned, statement_count
 
 
 # ---------------------------------------------------------------------------

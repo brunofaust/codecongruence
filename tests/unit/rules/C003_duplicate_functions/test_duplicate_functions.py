@@ -243,3 +243,21 @@ def outer(value):
     assert "literal payload" in before
     assert 'f"{value}"' in before
     assert 'b"bytes payload"' in before
+
+
+async def test_false_counts_code_statements_without_comments(tmp_path: Path) -> None:
+    """Comment-only changes cannot make a short Python body eligible."""
+    path = tmp_path / "module.py"
+    path.write_text("""
+def short():
+    value = 1  # commentary
+    return value
+""")
+    changed = [ChangedFile(path=path, added_ranges=())]
+
+    assert await DuplicateFunctionsRule._collect(changed, "staged", 3, False) == []
+    assert len(await DuplicateFunctionsRule._collect(changed, "staged", 2, False)) == 1
+
+    path.write_text(path.read_text().replace("  # commentary", ""))
+    assert await DuplicateFunctionsRule._collect(changed, "staged", 3, False) == []
+    assert len(await DuplicateFunctionsRule._collect(changed, "staged", 2, False)) == 1
