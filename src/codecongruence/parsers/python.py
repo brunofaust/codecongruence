@@ -227,6 +227,36 @@ def _extract_parameters(
     return tuple(names), tuple(details)
 
 
+def _called_names(body: Node, src: bytes) -> tuple[str, ...]:
+    """Collect unqualified callee names invoked anywhere inside a function body.
+
+    Only bare ``f()`` calls are recorded.  Every receiver-qualified call is
+    ignored, including ``self.f()``: the receiver's namespace is not resolved
+    here, so ``self.render()`` on one class would otherwise be read as a call
+    to an unrelated ``render`` on another class — and ``logger.info()`` as a
+    call to a function named ``info``.  Consumers use these names to suppress
+    findings, so an unresolvable call must contribute nothing.
+
+    Args:
+        body: The function body AST node to search.
+        src: Raw source bytes of the file.
+
+    Returns:
+        Deduplicated callee names in first-seen order.
+    """
+    names: dict[str, None] = {}
+    stack = [body]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        if node.type != "call":
+            continue
+        func = node.child_by_field_name("function")
+        if func is not None and func.type == "identifier":
+            names[_text(func, src)] = None
+    return tuple(names)
+
+
 def _make_function_info(
     node: Node,
     src: bytes,
@@ -256,6 +286,7 @@ def _make_function_info(
         body_statements=len(body_node.named_children),
         parameters=param_names,
         parameter_details=param_details,
+        called_names=_called_names(body_node, src),
     )
 
 

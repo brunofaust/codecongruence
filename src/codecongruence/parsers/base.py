@@ -41,6 +41,12 @@ class FunctionInfo:
     # Each entry: (clean_name, annotation_text, default_text).
     # annotation_text / default_text are "" when absent.
     # clean_name has no * prefix; matches param.lstrip("*") in rules.
+    called_names: tuple[str, ...] = ()
+    # Simple names of callees invoked anywhere in the body, including inside
+    # nested definitions. Only unqualified ``f()`` calls are recorded: a
+    # receiver-qualified call (``self.f()``, ``logger.info()``) names a member
+    # of a namespace this layer does not resolve.
+    # Parsers that do not resolve calls leave this empty.
 
 
 @dataclass(frozen=True, slots=True)

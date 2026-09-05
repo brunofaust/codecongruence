@@ -20,11 +20,15 @@ if TYPE_CHECKING:
 
 
 def _check(
-    files: list[Path], emb: Embedder, threshold: float = 0.92, scope: str = "staged"
+    files: list[Path],
+    emb: Embedder,
+    threshold: float = 0.92,
+    scope: str = "staged",
+    **options: object,
 ) -> Sequence[RuleViolation]:
     rule = DuplicateFunctionsRule()
     changed = [ChangedFile(path=f, added_ranges=()) for f in files]
-    cfg = RuleConfig(threshold=threshold, scope=scope)
+    cfg = RuleConfig(threshold=threshold, scope=scope, **options)
     return asyncio.run(rule.check(changed, emb, cfg))
 
 
@@ -261,3 +265,185 @@ def short():
     path.write_text(path.read_text().replace("  # commentary", ""))
     assert await DuplicateFunctionsRule._collect(changed, "staged", 3, False) == []
     assert len(await DuplicateFunctionsRule._collect(changed, "staged", 2, False)) == 1
+
+
+def test_skips_nested_closure_against_its_enclosing_function(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """A closure's source is contained in its parent's, so the pair scores high by construction."""
+    src = """
+def build_edit_retaining_history_processor(history):
+    def process(edit):
+        edit = attach_history(edit, history)
+        edit = normalize_ranges(edit)
+        edit = drop_empty_hunks(edit)
+        edit = renumber(edit)
+        return edit
+    register(process)
+    return process
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    # Without the containment skip this pair scores 0.957 against the 0.92 default.
+    assert _check([f], fake_embedder) == []
+
+
+def test_skips_caller_against_its_callee(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """A wrapper that delegates to another function is single-owner design, not duplication."""
+    src = """
+def resolve_price_id(plan_code, billing_cycle):
+    prices = load_price_table()
+    key = (plan_code, billing_cycle)
+    price_id = prices[key]
+    return price_id
+
+def matching_price_for_plan(price_id, billing_cycle):
+    prices = load_price_table()
+    plan_code = reverse_lookup(prices, price_id)
+    price_id = resolve_price_id(plan_code, billing_cycle)
+    return price_id
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    # The bag-of-words fixture scores this realistic wrapper pair at 0.870, so the
+    # threshold is lowered to keep the test about the call-edge skip, not tuning.
+    assert _check([f], fake_embedder, threshold=0.85) == []
+
+
+def test_still_flags_genuine_top_level_duplicates(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """The suppressions must not blind the rule to real duplicate pairs."""
+    src = """
+def fetch_user_by_id(uid):
+    row = db.query("SELECT * FROM users WHERE id = %s", uid)
+    result = row.fetchone()
+    return result
+
+def load_user(user_id):
+    row = db.query("SELECT * FROM users WHERE id = %s", user_id)
+    result = row.fetchone()
+    return result
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check([f], fake_embedder)
+    assert [
+        v for v in violations if "`fetch_user_by_id`" in v.message and "`load_user`" in v.message
+    ]
+
+
+def test_sibling_closures_in_the_same_parent_are_still_compared(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Sibling closures never enclose each other, so a real duplicate between them is reported."""
+    src = """
+def outer(source):
+    def first(record):
+        row = db.query("SELECT * FROM users WHERE id = %s", record)
+        result = row.fetchone()
+        return result
+    def second(item):
+        row = db.query("SELECT * FROM users WHERE id = %s", item)
+        result = row.fetchone()
+        return result
+    return first(source) + second(source)
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check([f], fake_embedder)
+    assert [v for v in violations if "`outer.first`" in v.message and "`outer.second`" in v.message]
+
+
+def test_call_edge_skip_requires_an_unambiguous_callee_name(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Two classes owning a same-named method make the call target ambiguous — no skip."""
+    src = """
+class Alpha:
+    def render(self, doc):
+        doc = normalize_document(doc)
+        doc = expand_macros(doc)
+        doc = collapse_whitespace(doc)
+        return doc
+
+class Beta:
+    def render(self, doc):
+        doc = normalize_document(doc)
+        doc = expand_macros(doc)
+        doc = collapse_whitespace(doc)
+        return doc
+
+def emit(doc):
+    doc = normalize_document(doc)
+    doc = expand_macros(doc)
+    doc = collapse_whitespace(doc)
+    return render(doc)
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check([f], fake_embedder)
+    assert [v for v in violations if "`emit`" in v.message and "`Alpha.render`" in v.message]
+
+
+def test_self_call_is_not_treated_as_a_call_edge(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """``self.render`` cannot resolve to another class's ``render`` — no skip."""
+    src = """
+class Alpha:
+    def render(self, doc):
+        doc = normalize_document(doc)
+        doc = expand_macros(doc)
+        doc = collapse_whitespace(doc)
+        return doc
+
+class Gamma:
+    def emit(self, doc):
+        doc = normalize_document(doc)
+        doc = expand_macros(doc)
+        doc = collapse_whitespace(doc)
+        return self.render(doc)
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check([f], fake_embedder)
+    assert [v for v in violations if "`Alpha.render`" in v.message and "`Gamma.emit`" in v.message]
+
+
+def test_skip_nested_functions_false_restores_the_parent_child_pair(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """The containment skip is configurable off."""
+    src = """
+def build_edit_retaining_history_processor(history):
+    def process(edit):
+        edit = attach_history(edit, history)
+        edit = normalize_ranges(edit)
+        edit = drop_empty_hunks(edit)
+        edit = renumber(edit)
+        return edit
+    register(process)
+    return process
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    assert _check([f], fake_embedder, skip_nested_functions=False)
+
+
+def test_skip_call_edges_false_restores_the_caller_callee_pair(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """The call-edge skip is configurable off."""
+    src = """
+def resolve_price_id(plan_code, billing_cycle):
+    prices = load_price_table()
+    key = (plan_code, billing_cycle)
+    price_id = prices[key]
+    return price_id
+
+def matching_price_for_plan(price_id, billing_cycle):
+    prices = load_price_table()
+    plan_code = reverse_lookup(prices, price_id)
+    price_id = resolve_price_id(plan_code, billing_cycle)
+    return price_id
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    assert _check([f], fake_embedder, threshold=0.85, skip_call_edges=False)
