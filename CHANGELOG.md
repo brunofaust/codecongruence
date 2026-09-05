@@ -1,12 +1,146 @@
 # CHANGELOG
 
 
+## v0.9.0 (2026-09-05)
+
+### Bug Fixes
+
+- **c003**: Make both structural skips opt-in
+  ([`fa15914`](https://github.com/brunofaust/codecongruence/commit/fa1591423c2bd55eecdc4b0af5d90c572da2a946))
+
+C003 exists to identify equal code, and the two error directions are not symmetric: a false positive
+  costs one dismissal, while a suppressed pair is an invisible, permanent false negative.
+  skip_call_edges can suppress a pair that is both a genuine duplicate and a caller/callee, so
+  neither skip should be active unless asked for.
+
+skip_nested_functions and skip_call_edges now default to false and are documented as opt-in audit
+  aids rather than corrections.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01At4RynP1DDrGxunD5LJGGh
+
+- **c003**: Skip nested-closure and caller/callee pairs
+  ([`f9da4f0`](https://github.com/brunofaust/codecongruence/commit/f9da4f0770222e0d3ebd7cc6ce4a896e96d3f106))
+
+Two C003 pair shapes are reported by construction rather than because the code is duplicated.
+  Measured against a 105-pair corpus, nested closures alone were 7 pairs (6.7%).
+
+- skip_nested_functions (default true): drop a pair whose source ranges are nested. A closure's
+  source is textually contained in its parent's, so the similarity is a parse artifact and the pair
+  is undeletable anyway. Only ancestor/descendant pairs are affected; sibling closures stay
+  compared. Line ranges are language agnostic, so this covers every parser. - skip_call_edges
+  (default true): drop a pair where one function calls the other. Call targets come from a new
+  FunctionInfo.called_names populated by the Python parser. Only unqualified f() calls are recorded
+  — a qualified call names a member of a namespace this layer does not resolve, self.f() included —
+  and the callee's simple name must be unique among the compared functions, so same-named methods on
+  different classes never match.
+
+Both options follow the existing RuleConfig extras convention and are documented in the C003 README,
+  codecongruence.toml, the example config and cli.py's DEFAULT_TOML.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01At4RynP1DDrGxunD5LJGGh
+
+- **c003**: Trust a short body no strip pattern touched
+  ([`e9e0c5f`](https://github.com/brunofaust/codecongruence/commit/e9e0c5fa7e2cdec90cb5b5266760e428294f9bf2))
+
+The remnant floor was applied to every body, so a function that clears min_body_statement_count but
+  holds under 24 non-whitespace characters was marked over-stripped even with NO patterns
+  configured. Two consequences: an empty config stopped being a no-op in work, because one such
+  entry triggered a second corpus-wide embed_batch; and a short bystander dragged a correctly
+  stripped pair back to unstripped comparison, restoring the frame the patterns were meant to
+  remove.
+
+The floor now disqualifies a body stripping SHORTENED, never one that is merely small. Sizes are
+  compared rather than text because the strip also collapses blank lines, which changes the text
+  without removing code.
+
+Also documents that these keys live on the shared rule config but only C003 applies them today,
+  corrects the glob-dialect note (fnmatch translation, matched case-sensitively; the runner
+  case-folds on Windows), and shows the two scoped tables as commented stubs in the starter TOML.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01At4RynP1DDrGxunD5LJGGh
+
+### Features
+
+- **c003**: Add strip_before_compare for house-style boilerplate
+  ([`279b6bb`](https://github.com/brunofaust/codecongruence/commit/279b6bb972472b6b5c04b942c9f2d3967aa413f0))
+
+Project-specific boilerplate makes unrelated functions look alike. codecongruence supplies the
+  stripping, the project supplies the patterns, so the tool never has to know what FastAPI or boto3
+  is.
+
+strip_before_compare is a list of regular expressions — literals cannot cover one frame with a
+  varying payload, e.g. raise HTTPException(..., detail="org not found") and the same line with
+  "plan not found". They are removed from BOTH sides before embedding, so nothing is excluded from
+  comparison and what gets measured is the distinctive remainder. Measured on the bag-of-words
+  fixture: a frame-only difference falls from 0.938 to 0.286, while a genuine duplicate its frame
+  was diluting rises from 0.824 to 0.922.
+
+It is a declared RuleConfig field rather than a config extra so compile_strip_patterns() rejects an
+  invalid pattern at config load, naming it; the same lru_cache'd function serves the rule, so
+  patterns compile once per run rather than once per compared pair.
+
+strip_min_remnant_chars (default 24) guards over-stripping: when a strip leaves almost nothing, two
+  near-empty remnants match on nothing at all, so any pair touching one is compared UNSTRIPPED
+  instead. Falling back rather than skipping keeps C003 free of default suppressions and preserves
+  the true positive where two functions really are only the same boilerplate.
+  min_body_statement_count stays measured before stripping for the same reason.
+
+check() now reads its knobs into a frozen _Options record, which also clears the PLR0914
+  local-variable ceiling.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01At4RynP1DDrGxunD5LJGGh
+
+- **c003**: Scope strip_before_compare by file glob and symbol name
+  ([`b2d4fd7`](https://github.com/brunofaust/codecongruence/commit/b2d4fd7b05183e89c24996c757a2b60f247a7919))
+
+A pattern written for one area applied everywhere, so boilerplate meant for tests silently stripped
+  text out of src. Patterns now come in three forms:
+
+strip_before_compare flat list, applies everywhere strip_before_compare_by_path keyed by file glob
+  strip_before_compare_by_symbol keyed by symbol-name regex
+
+The kind of key is declared by the table it sits in rather than guessed from the string, because
+  'tests/**/a*.py' and '^test_' are both valid strings and a single bare mapping could not tell them
+  apart. The unscoped list stays, so "everywhere" never needs a fake ** glob. Scopes compose: a
+  function gets the union of the unscoped patterns and every scope it matches, in config order.
+  Measured on the bag-of-words fixture: 0.938 unstripped, 0.868 with the path scope alone, 0.889
+  with the symbol scope alone, 0.286 with both.
+
+Globs use the same fnmatch dialect the runner already applies to exclude, so the project keeps one
+  notion of a glob, and they match the REPO-RELATIVE POSIX path via scope_path() — a glob behaves
+  the same from the repo root and from a subdirectory. An absolute glob can never match, so it is
+  rejected at load. Symbol keys are re.search'ed against the function's simple name.
+
+compile_strip_rules() extends the existing cached compile step: every pattern, glob and symbol regex
+  is built once per run and validated at config load with the offending value in the message. The
+  rule then memoises each function's resolved pattern set per (file, symbol), so scope matching
+  never repeats per compared pair. The remnant guard, the fallback-not-skip decision and
+  min_body_statement_count-before-stripping keep their semantics.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01At4RynP1DDrGxunD5LJGGh
+
+
 ## v0.8.1 (2026-09-05)
 
 ### Bug Fixes
 
 - **cli**: Report installed package version
   ([`70be539`](https://github.com/brunofaust/codecongruence/commit/70be5399d92cef430e7062572bd3be1ca6835002))
+
+### Chores
+
+- **release**: Sync lockfile for v0.8.1
+  ([`36156a8`](https://github.com/brunofaust/codecongruence/commit/36156a8d2720ca22fa119b675a8546ccd5ef6ac8))
 
 
 ## v0.8.0 (2026-08-28)
