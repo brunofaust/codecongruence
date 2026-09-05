@@ -175,8 +175,24 @@ skip_call_edges = false
 
 # Regexes removed from BOTH sides before similarity is computed, so what gets
 # compared is the distinctive remainder rather than your house style.  Use TOML
-# literal strings (single quotes) so backslashes survive.  An invalid pattern
-# fails at config load, naming the pattern.  Empty (the default) is a no-op.
+# literal strings (single quotes) so backslashes survive.  An invalid pattern or
+# glob fails at config load, naming the value.  Empty (the default) is a no-op.
+#
+# This flat list is UNSCOPED — it applies to every function.  Two sibling tables
+# scope patterns so one area's boilerplate is not stripped everywhere:
+#
+#   [rules.duplicate_functions.strip_before_compare_by_path]     key = file glob
+#   'tests/**/a*.py' = ['^\s*self\.assert\w+\(.*\)\s*$']
+#
+#   [rules.duplicate_functions.strip_before_compare_by_symbol]   key = name regex
+#   '^test_' = ['^\s*monkeypatch\.\w+\(.*\)\s*$']
+#
+# The table says which kind of key it is, so a reader never has to guess whether
+# a string is a glob or a regex.  Scopes compose: a function gets the union of
+# the unscoped patterns and every scope it matches.  Globs match the
+# REPO-RELATIVE POSIX path, so they behave the same from any directory, and use
+# the same fnmatch dialect as `exclude`.  Symbol regexes are `re.search`ed
+# against the function's simple name.
 strip_before_compare = []
 
 # If a strip leaves fewer than this many non-whitespace characters, the pair is

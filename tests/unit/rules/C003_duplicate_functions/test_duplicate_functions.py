@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -12,7 +13,6 @@ from codecongruence.rules.C003_duplicate_functions import DuplicateFunctionsRule
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
-    from pathlib import Path
 
     from numpy.typing import NDArray
 
@@ -484,6 +484,160 @@ def create_plan(payload, session):
 """
 
 
+def _check_tree(
+    root: Path,
+    relative_paths: list[str],
+    source: str,
+    emb: Embedder,
+    threshold: float = 0.92,
+    **options: object,
+) -> Sequence[RuleViolation]:
+    """Run the rule over repo-relative paths under ``root``, as the runner does."""
+    rule = DuplicateFunctionsRule()
+    changed = []
+    for relative in relative_paths:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+        changed.append(ChangedFile(path=Path(relative), added_ranges=(), repo_root=root))
+    cfg = RuleConfig(threshold=threshold, **options)
+    return asyncio.run(rule.check(changed, emb, cfg))
+
+
+_FRAME_PATTERNS = [
+    r"^\s*(?:validate_request_signature|audit_log)\(.*\)\s*$",
+    r"^\s*session\.\w+\(.*\)\s*$",
+    r"^\s*return record\s*$",
+]
+_SESSION_PATTERN = r"^\s*session\.\w+\(.*\)\s*$"
+_AUDIT_PATTERNS = [
+    r"^\s*(?:validate_request_signature|audit_log)\(.*\)\s*$",
+    r"^\s*return record\s*$",
+]
+
+
+def test_strip_scope_by_path_applies_only_to_matching_files(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """A path-scoped pattern strips inside its glob and nowhere else."""
+    scope = {"tests/**/a*.py": _FRAME_PATTERNS}
+    # Unstripped the frame carries the pair to 0.938; stripped they score 0.286.
+    assert (
+        _check_tree(
+            tmp_path,
+            ["tests/unit/alpha.py"],
+            _SHARED_FRAME,
+            fake_embedder,
+            strip_before_compare_by_path=scope,
+        )
+        == []
+    )
+    assert _check_tree(
+        tmp_path,
+        ["src/billing/beta.py"],
+        _SHARED_FRAME,
+        fake_embedder,
+        strip_before_compare_by_path=scope,
+    )
+
+
+def test_strip_scope_by_symbol_applies_only_to_matching_names(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """A symbol-scoped pattern strips for matching function names and no others."""
+    scope = {"^create_": _FRAME_PATTERNS}
+    assert (
+        _check_tree(
+            tmp_path,
+            ["src/a.py"],
+            _SHARED_FRAME,
+            fake_embedder,
+            strip_before_compare_by_symbol=scope,
+        )
+        == []
+    )
+    renamed = _SHARED_FRAME.replace("def create_", "def build_")
+    assert _check_tree(
+        tmp_path,
+        ["src/b.py"],
+        renamed,
+        fake_embedder,
+        strip_before_compare_by_symbol=scope,
+    )
+
+
+def test_unscoped_strip_patterns_apply_everywhere(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """The flat list needs no glob to reach every file."""
+    for relative in ("tests/unit/alpha.py", "src/billing/beta.py"):
+        assert (
+            _check_tree(
+                tmp_path,
+                [relative],
+                _SHARED_FRAME,
+                fake_embedder,
+                strip_before_compare=_FRAME_PATTERNS,
+            )
+            == []
+        )
+
+
+def test_strip_scopes_compose_into_a_union(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """A function matching two scopes is stripped by both of their patterns."""
+    path_scope = {"tests/**/a*.py": [_SESSION_PATTERN]}
+    symbol_scope = {"^create_": _AUDIT_PATTERNS}
+    matching = ["tests/unit/alpha.py"]
+    # Measured: no strip 0.938, path scope alone 0.868, symbol scope alone
+    # 0.889, the union 0.286. Only the union clears a 0.85 threshold, so the
+    # test fails unless both scopes contribute.
+    assert _check_tree(tmp_path, matching, _SHARED_FRAME, fake_embedder, threshold=0.85)
+    assert _check_tree(
+        tmp_path,
+        matching,
+        _SHARED_FRAME,
+        fake_embedder,
+        threshold=0.85,
+        strip_before_compare_by_path=path_scope,
+    )
+    assert _check_tree(
+        tmp_path,
+        matching,
+        _SHARED_FRAME,
+        fake_embedder,
+        threshold=0.85,
+        strip_before_compare_by_symbol=symbol_scope,
+    )
+    assert (
+        _check_tree(
+            tmp_path,
+            matching,
+            _SHARED_FRAME,
+            fake_embedder,
+            threshold=0.85,
+            strip_before_compare_by_path=path_scope,
+            strip_before_compare_by_symbol=symbol_scope,
+        )
+        == []
+    )
+
+
+def test_path_scope_matches_the_repo_relative_path_not_the_absolute_one(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Globs anchor on the repo root, so the same glob works from any directory."""
+    # An absolute-path glob is rejected at load, and a repo-relative one matches
+    # even though the file lives under a long temporary absolute prefix.
+    assert (
+        _check_tree(
+            tmp_path,
+            ["tests/unit/alpha.py"],
+            _SHARED_FRAME,
+            fake_embedder,
+            strip_before_compare_by_path={"tests/*/alpha.py": _FRAME_PATTERNS},
+        )
+        == []
+    )
+
+
 def test_strip_before_compare_removes_the_shared_frame(
     tmp_path: Path, fake_embedder: Embedder
 ) -> None:
@@ -586,6 +740,11 @@ def test_strip_before_compare_absent_or_empty_is_a_no_op(
     f = tmp_path / "mod.py"
     f.write_text(_SHARED_FRAME)
     baseline = _check([f], fake_embedder)
-    assert [v.message for v in _check([f], fake_embedder, strip_before_compare=[])] == [
-        v.message for v in baseline
-    ]
+    empty = _check(
+        [f],
+        fake_embedder,
+        strip_before_compare=[],
+        strip_before_compare_by_path={},
+        strip_before_compare_by_symbol={},
+    )
+    assert [v.message for v in empty] == [v.message for v in baseline]

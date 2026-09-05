@@ -38,10 +38,20 @@ exclude = ["tests/**"]
 
 # Regexes removed from both sides before comparison. Use TOML *literal*
 # strings (single quotes) so backslashes reach the regex engine intact.
+# This flat list is UNSCOPED: it applies to every function.
 strip_before_compare = [
     '^\s*raise HTTPException\(.*\)\s*$',
-    '^\s*(?:logger|log)\.\w+\(.*\)\s*$',
 ]
+
+# Scoped by file glob — the key is a path glob.
+[rules.duplicate_functions.strip_before_compare_by_path]
+'tests/**/a*.py' = ['^\s*self\.assert\w+\(.*\)\s*$']
+'src/api/**' = ['^\s*raise HTTPException\(.*\)\s*$']
+
+# Scoped by symbol name — the key is a regex on the function's simple name.
+[rules.duplicate_functions.strip_before_compare_by_symbol]
+'^test_' = ['^\s*monkeypatch\.\w+\(.*\)\s*$']
+'_handler$' = ['^\s*log\.\w+\(.*\)\s*$']
 ```
 
 Set `include_comments = false` when comment-only edits must not change C003's
@@ -65,16 +75,51 @@ raise HTTPException(status_code=404, detail="org not found")
 raise HTTPException(status_code=404, detail="plan not found")
 ```
 
+#### Scoping
+
+A pattern written for one area must not silently strip text everywhere, so
+patterns come in three forms:
+
+| Key                                                              | Applies to                   |
+| ---------------------------------------------------------------- | ---------------------------- |
+| `strip_before_compare` (flat list)                               | every function               |
+| `[…strip_before_compare_by_path]`, key = **file glob**           | functions in matching files  |
+| `[…strip_before_compare_by_symbol]`, key = **symbol-name regex** | functions whose name matches |
+
+The kind of key is declared by the table it sits in, never guessed from the
+key itself — `tests/**/a*.py` and `^test_` are both valid strings, so a single
+bare mapping could not tell them apart.
+
+Scopes **compose**: a function gets the union of the unscoped patterns and
+every matching path and symbol scope, in configuration order. Nothing needs a
+`**` glob to mean "everywhere" — that is what the flat list is for.
+
+`_by_path` keys are file globs in the same `fnmatch` dialect the runner already
+uses for `exclude` and `exclude_functions`, so this project has one notion of a
+glob rather than two. `*` crosses `/`, so `tests/**/a*.py` and `tests/*/a*.py`
+both match `tests/unit/alpha.py`. Matching is case-sensitive.
+
+`_by_symbol` keys are regexes matched with `re.search` against the function's
+**simple** name, so `^test_` and `_handler$` behave the way they read.
+
+**Globs match the repo-relative POSIX path**, anchored on the repository root
+rather than the process working directory — a glob that works from the repo
+root works identically from a subdirectory. An absolute glob is rejected at
+config load, since it could never match.
+
 Notes:
 
 - Patterns are compiled once per run with `re.MULTILINE`, so `^` and `$`
     anchor per line. A multi-line frame opts in with an inline `(?s)`.
+- Globs and symbol regexes are compiled once per run too, and each function's
+    resolved pattern set is memoised per `(file, symbol)`, so scope matching is
+    never repeated per compared pair.
 - Every occurrence is removed, and the blank lines left behind are closed up.
 - Write them as TOML **literal** strings (`'…'`), or every backslash needs
     doubling.
-- An invalid pattern is rejected when the config is *loaded*, with the
-    offending pattern in the error. It is never silently skipped.
-- The default is an empty list, which is a strict no-op.
+- An invalid pattern *or glob* is rejected when the config is *loaded*, with
+    the offending value in the error. It is never silently skipped.
+- The default — no list, no tables — is a strict no-op.
 
 Stripping is applied to **both** sides and excludes nothing from comparison —
 only the shared frame is removed, so what gets measured is the distinctive

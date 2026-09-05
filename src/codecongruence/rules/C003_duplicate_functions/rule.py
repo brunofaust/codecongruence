@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import TYPE_CHECKING
 
-from codecongruence.core.config import compile_strip_patterns
+from codecongruence.core.config import StripRules, scope_path
 from codecongruence.core.git import ChangedFile, all_tracked_files, current_repo_root
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
 from codecongruence.parsers.python import strip_comments_and_nested_docstrings
@@ -64,6 +64,36 @@ def _strip_before_compare(body: str, patterns: Sequence[re.Pattern[str]]) -> str
     for pattern in patterns:
         text = pattern.sub("", text)
     return "\n".join(line for line in text.splitlines() if line.strip())
+
+
+def _apply_scoped_strip(
+    body: str,
+    scoped_path: str,
+    symbol: str,
+    strip_rules: StripRules | None,
+    memo: dict[tuple[str, str], tuple[re.Pattern[str], ...]],
+) -> str:
+    """Strip the patterns configured for one function, resolving scopes once.
+
+    ``memo`` keeps the resolve at one lookup per distinct ``(file, symbol)``
+    scope key rather than re-matching every glob for every function.
+
+    Args:
+        body: The function body about to be embedded.
+        scoped_path: Repo-relative POSIX path from :func:`scope_path`.
+        symbol: The function's simple name.
+        strip_rules: Compiled patterns, or ``None`` when stripping is off.
+        memo: Resolve cache shared across one collection pass.
+
+    Returns:
+        The body with every pattern in scope removed.
+    """
+    if not strip_rules:
+        return body
+    key = (scoped_path, symbol)
+    if key not in memo:
+        memo[key] = strip_rules.patterns_for(scoped_path, symbol)
+    return _strip_before_compare(body, memo[key])
 
 
 def _remnant_size(body: str) -> int:
@@ -132,7 +162,7 @@ class _Options:
     include_comments: bool
     skip_nested_functions: bool
     skip_call_edges: bool
-    strip_patterns: tuple[re.Pattern[str], ...]
+    strip_rules: StripRules
     min_remnant_chars: int
 
 
@@ -186,7 +216,7 @@ class DuplicateFunctionsRule:
             options.scope,
             options.min_stmts,
             options.include_comments,
-            strip_patterns=options.strip_patterns,
+            strip_rules=options.strip_rules,
             min_remnant_chars=options.min_remnant_chars,
         )
         if len(entries) < _MIN_PAIR_COUNT:
@@ -264,9 +294,7 @@ class DuplicateFunctionsRule:
             include_comments=bool(getattr(config, "include_comments", True)),
             skip_nested_functions=bool(getattr(config, "skip_nested_functions", False)),
             skip_call_edges=bool(getattr(config, "skip_call_edges", False)),
-            strip_patterns=compile_strip_patterns(
-                tuple(getattr(config, "strip_before_compare", ()))
-            ),
+            strip_rules=config.strip_rules(),
             min_remnant_chars=_DEFAULT_MIN_REMNANT_CHARS if floor is None else int(floor),
         )
 
@@ -277,7 +305,7 @@ class DuplicateFunctionsRule:
         min_stmts: int,
         include_comments: bool = True,
         *,
-        strip_patterns: Sequence[re.Pattern[str]] = (),
+        strip_rules: StripRules | None = None,
         min_remnant_chars: int = _DEFAULT_MIN_REMNANT_CHARS,
     ) -> list[_FuncEntry]:
         """Return function entries to compare based on scope.
@@ -287,8 +315,9 @@ class DuplicateFunctionsRule:
             scope: ``"staged"`` or ``"full"``.
             min_stmts: Skip functions with fewer body statements than this.
             include_comments: Whether inline comments remain in embedded bodies.
-            strip_patterns: Compiled boilerplate patterns removed from the body
-                before it is embedded. Empty means no stripping.
+            strip_rules: Compiled boilerplate patterns, global and scoped,
+                removed from the body before it is embedded. ``None`` means no
+                stripping.
             min_remnant_chars: Non-whitespace characters a stripped body must
                 keep; below it the entry is marked for unstripped comparison.
 
@@ -316,8 +345,13 @@ class DuplicateFunctionsRule:
 
         seen: set[tuple[str, int]] = set()
         entries: list[_FuncEntry] = []
+        # One resolve per (file, symbol) scope key rather than per compared
+        # pair: stripping happens once per function, and the path half is
+        # shared by every function in the file.
+        resolved: dict[tuple[str, str], tuple[re.Pattern[str], ...]] = {}
 
         for cf, parser, source in iter_parsed(files):
+            scoped_path = scope_path(cf.path, cf.repo_root) if strip_rules else ""
             for func in cf.iter_functions(parser, source):
                 if is_overload_decorated(func.decorators) or is_dataclass_init(func):
                     continue
@@ -340,7 +374,7 @@ class DuplicateFunctionsRule:
                 if key in seen:
                     continue
                 seen.add(key)
-                stripped = _strip_before_compare(body, strip_patterns) if strip_patterns else body
+                stripped = _apply_scoped_strip(body, scoped_path, func.name, strip_rules, resolved)
                 entries.append(
                     _FuncEntry(
                         file_path=str(cf.path),
