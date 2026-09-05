@@ -191,8 +191,11 @@ skip_call_edges = false
 # a string is a glob or a regex.  Scopes compose: a function gets the union of
 # the unscoped patterns and every scope it matches.  Globs match the
 # REPO-RELATIVE POSIX path, so they behave the same from any directory, and use
-# the same fnmatch dialect as `exclude`.  Symbol regexes are `re.search`ed
-# against the function's simple name.
+# the same fnmatch dialect as `exclude` (matched case-sensitively).  Symbol
+# regexes are `re.search`ed against the function's simple name.
+#
+# These keys live on the shared rule config, but only C003 applies them today:
+# setting them under another rule validates and then does nothing.
 strip_before_compare = []
 
 # If a strip leaves fewer than this many non-whitespace characters, the pair is

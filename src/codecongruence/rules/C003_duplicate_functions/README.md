@@ -94,10 +94,11 @@ Scopes **compose**: a function gets the union of the unscoped patterns and
 every matching path and symbol scope, in configuration order. Nothing needs a
 `**` glob to mean "everywhere" — that is what the flat list is for.
 
-`_by_path` keys are file globs in the same `fnmatch` dialect the runner already
-uses for `exclude` and `exclude_functions`, so this project has one notion of a
-glob rather than two. `*` crosses `/`, so `tests/**/a*.py` and `tests/*/a*.py`
-both match `tests/unit/alpha.py`. Matching is case-sensitive.
+`_by_path` keys are file globs translated with `fnmatch` — the same dialect the
+runner already uses for `exclude` and `exclude_functions`, so this project has
+one notion of a glob rather than two — and matched case-sensitively (the runner
+case-folds on Windows; these do not). `*` crosses `/`, so `tests/**/a*.py` and
+`tests/*/a*.py` both match `tests/unit/alpha.py`.
 
 `_by_symbol` keys are regexes matched with `re.search` against the function's
 **simple** name, so `^test_` and `_handler$` behave the way they read.
@@ -120,6 +121,10 @@ Notes:
 - An invalid pattern *or glob* is rejected when the config is *loaded*, with
     the offending value in the error. It is never silently skipped.
 - The default — no list, no tables — is a strict no-op.
+- The options live on the shared rule config so a future rule can adopt them
+    without a config migration, but **only C003 applies them today**. Setting
+    them under `[rules.name_vs_body]` or any other rule validates and then does
+    nothing.
 
 Stripping is applied to **both** sides and excludes nothing from comparison —
 only the shared frame is removed, so what gets measured is the distinctive
@@ -133,9 +138,10 @@ the boilerplate was hiding a real duplicate.
 
 Over-stripping is the one way this option can *lower* the bar: if a pattern
 eats almost everything, two near-empty remnants match each other on nothing at
-all. When a stripped body keeps fewer than `strip_min_remnant_chars`
+all. When stripping *shortens* a body to fewer than `strip_min_remnant_chars`
 non-whitespace characters, any pair involving it is compared **unstripped**
-instead.
+instead. A body no pattern touched is always trusted however short it is — the
+floor disqualifies a shortened body, never a small one.
 
 Falling back rather than skipping the pair is deliberate. Skipping would be a
 suppression, and C003 suppresses nothing by default; falling back also

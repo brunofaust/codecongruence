@@ -748,3 +748,34 @@ def test_strip_before_compare_absent_or_empty_is_a_no_op(
         strip_before_compare_by_symbol={},
     )
     assert [v.message for v in empty] == [v.message for v in baseline]
+
+
+async def test_an_untouched_short_body_is_never_treated_as_over_stripped(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """The floor disqualifies a shortened body, never a small one.
+
+    A short function no pattern touched must stay trusted; otherwise an empty
+    config forces a second corpus-wide embed, and one short bystander drags a
+    correctly stripped pair back to unstripped comparison.
+    """
+    short_source = """
+def tiny(a):
+    x = 1
+    y = 2
+    return x
+"""
+    bystander = tmp_path / "short.py"
+    bystander.write_text(short_source)
+    unconfigured = [ChangedFile(path=bystander, added_ranges=())]
+    entries = await DuplicateFunctionsRule._collect(unconfigured, "staged", 3)
+    assert [e.remnant_ok for e in entries] == [True]
+
+    framed = tmp_path / "frame.py"
+    framed.write_text(_SHARED_FRAME)
+    files = [
+        ChangedFile(path=framed, added_ranges=()),
+        ChangedFile(path=bystander, added_ranges=()),
+    ]
+    cfg = RuleConfig(threshold=0.92, strip_before_compare=_FRAME_PATTERNS)
+    assert await DuplicateFunctionsRule().check(files, fake_embedder, cfg) == []

@@ -66,6 +66,27 @@ def _strip_before_compare(body: str, patterns: Sequence[re.Pattern[str]]) -> str
     return "\n".join(line for line in text.splitlines() if line.strip())
 
 
+def _remnant_trusted(stripped: str, body: str, min_remnant_chars: int) -> bool:
+    """True when the stripped body still represents the function.
+
+    A body no pattern touched is always trusted, however short it is: the floor
+    exists to catch a strip that ate almost everything, not to disqualify small
+    functions. Sizes are compared rather than text because
+    :func:`_strip_before_compare` also collapses blank lines, which changes the
+    text without removing any code.
+
+    Args:
+        stripped: The body after stripping.
+        body: The body before stripping.
+        min_remnant_chars: Non-whitespace floor a shortened body must clear.
+
+    Returns:
+        ``False`` only when stripping removed content and left too little.
+    """
+    remaining = _remnant_size(stripped)
+    return remaining >= min_remnant_chars or remaining == _remnant_size(body)
+
+
 def _apply_scoped_strip(
     body: str,
     scoped_path: str,
@@ -385,7 +406,7 @@ class DuplicateFunctionsRule:
                         name=func.name,
                         called_names=func.called_names,
                         raw_body=body,
-                        remnant_ok=_remnant_size(stripped) >= min_remnant_chars,
+                        remnant_ok=_remnant_trusted(stripped, body, min_remnant_chars),
                     )
                 )
 
