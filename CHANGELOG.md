@@ -1,12 +1,26 @@
 # CHANGELOG
 
 
+## v0.8.1 (2026-09-05)
+
+### Bug Fixes
+
+- **cli**: Report installed package version
+  ([`70be539`](https://github.com/brunofaust/codecongruence/commit/70be5399d92cef430e7062572bd3be1ca6835002))
+
+
 ## v0.8.0 (2026-08-28)
 
 ### Bug Fixes
 
+- **c003**: Exclude comments from statement eligibility (BD-797)
+  ([`61e3d12`](https://github.com/brunofaust/codecongruence/commit/61e3d12850dba0f8b9e9c7675c910e78c81d1f5f))
+
 - **c003**: Preserve code while excluding nested documentation (BD-797, BD-799)
   ([`d6885a5`](https://github.com/brunofaust/codecongruence/commit/d6885a5303ac371ac90114d7d77e9b531414a292))
+
+- **release**: Sync lockfile version (BD-797, BD-799)
+  ([`4b4843d`](https://github.com/brunofaust/codecongruence/commit/4b4843d692a7398b9dda5648e572caeec5302a9b))
 
 ### Features
 
