@@ -146,10 +146,11 @@ trace.
     `FunctionDef` / `AsyncFunctionDef`, **stripping** the `def` signature line
     and the docstring node from `body_source` (critical for honest similarity
     scores). `FunctionInfo` also carries `line_start`/`line_end` (used by C003
-    to skip a closure paired with its enclosing function) and `called_names`
-    — the unqualified `f()` call targets found in the body, used by C003 to
-    skip a wrapper paired with the function it delegates to. Only the Python
-    parser populates it; others leave it empty.
+    by C003's opt-in `skip_nested_functions`) and `called_names` — the
+    unqualified `f()` call targets found in the body, used by C003's opt-in
+    `skip_call_edges`. Only the Python parser populates `called_names`; others
+    leave it empty. Both skips default to off: C003 exists to find equal code,
+    so it never suppresses a pair unless asked.
 - `iter_comments(source, context_lines)` — yields comment + the following
     non-comment, non-blank code window. Skips shebangs, pragmas (`# type: ignore`, `# noqa:`, ...), TODO markers, and comments shorter than four
     words.

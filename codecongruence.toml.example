@@ -163,13 +163,15 @@ enabled = true
 threshold = 0.92
 include_comments = true
 
-# Structural exclusions.  A closure and its enclosing function overlap by
-# construction, and a wrapper that calls its callee is single-owner design —
-# neither is duplication.  Turn `skip_call_edges` off for a dedup audit: it is
-# the one that can also hide a genuine duplicate which happens to call its twin.
-# `skip_call_edges` resolves calls for Python only; it is inert for JS/TS.
-skip_nested_functions = true
-skip_call_edges = true
+# Opt-in audit aids, both OFF by default.  They suppress two pair shapes that
+# overlap by construction — a closure inside its parent, and a wrapper that
+# calls its callee — but a suppressed pair is an invisible, permanent false
+# negative, while a false positive costs one dismissal.  Turn them on only when
+# a run is drowning in those shapes, and turn them back off before a dedup
+# audit.  `skip_call_edges` resolves calls for Python only; it is inert for
+# JS/TS, and it can hide a genuine duplicate that happens to call its twin.
+skip_nested_functions = false
+skip_call_edges = false
 
 # ===============================================================================
 # Rule: D001 — docstring_vs_body

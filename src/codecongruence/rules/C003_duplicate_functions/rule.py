@@ -117,10 +117,12 @@ class DuplicateFunctionsRule:
             changed_files: Staged (or all) files supplied by the runner.
             embedder: Shared embedder for semantic similarity.
             config: Per-rule configuration (threshold, scope, excludes).
-                ``skip_nested_functions`` (default ``True``) drops pairs where
-                one symbol's source range encloses the other's;
-                ``skip_call_edges`` (default ``True``) drops pairs where one
-                symbol calls the other by an unambiguous name.
+                ``skip_nested_functions`` (opt-in) drops pairs where one
+                symbol's source range encloses the other's;
+                ``skip_call_edges`` (opt-in) drops pairs where one symbol calls
+                the other by an unambiguous name. Both default to ``False``:
+                a suppressed pair is an invisible false negative, which costs
+                more in a duplicate detector than a dismissed false positive.
 
         Returns:
             One :class:`RuleViolation` per duplicate pair, reported on the
@@ -130,8 +132,8 @@ class DuplicateFunctionsRule:
         scope = str(getattr(config, "scope", "staged") or "staged")
         min_stmts = int(getattr(config, "min_body_statement_count", 3) or 3)
         include_comments = bool(getattr(config, "include_comments", True))
-        skip_nested_functions = bool(getattr(config, "skip_nested_functions", True))
-        skip_call_edges = bool(getattr(config, "skip_call_edges", True))
+        skip_nested_functions = bool(getattr(config, "skip_nested_functions", False))
+        skip_call_edges = bool(getattr(config, "skip_call_edges", False))
 
         entries = await self._collect(changed_files, scope, min_stmts, include_comments)
         if len(entries) < _MIN_PAIR_COUNT:

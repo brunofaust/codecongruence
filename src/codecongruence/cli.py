@@ -67,8 +67,8 @@ threshold = 0.20
 enabled = true
 threshold = 0.92
 include_comments = true
-skip_nested_functions = true
-skip_call_edges = true
+skip_nested_functions = false
+skip_call_edges = false
 
 [rules.params_in_docstring]
 enabled = true

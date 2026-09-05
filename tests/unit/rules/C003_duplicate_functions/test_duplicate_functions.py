@@ -285,7 +285,7 @@ def build_edit_retaining_history_processor(history):
     f = tmp_path / "mod.py"
     f.write_text(src)
     # Without the containment skip this pair scores 0.957 against the 0.92 default.
-    assert _check([f], fake_embedder) == []
+    assert _check([f], fake_embedder, skip_nested_functions=True) == []
 
 
 def test_skips_caller_against_its_callee(tmp_path: Path, fake_embedder: Embedder) -> None:
@@ -307,7 +307,7 @@ def matching_price_for_plan(price_id, billing_cycle):
     f.write_text(src)
     # The bag-of-words fixture scores this realistic wrapper pair at 0.870, so the
     # threshold is lowered to keep the test about the call-edge skip, not tuning.
-    assert _check([f], fake_embedder, threshold=0.85) == []
+    assert _check([f], fake_embedder, threshold=0.85, skip_call_edges=True) == []
 
 
 def test_still_flags_genuine_top_level_duplicates(tmp_path: Path, fake_embedder: Embedder) -> None:
@@ -380,7 +380,7 @@ def emit(doc):
 """
     f = tmp_path / "mod.py"
     f.write_text(src)
-    violations = _check([f], fake_embedder)
+    violations = _check([f], fake_embedder, skip_call_edges=True)
     assert [v for v in violations if "`emit`" in v.message and "`Alpha.render`" in v.message]
 
 
@@ -403,14 +403,14 @@ class Gamma:
 """
     f = tmp_path / "mod.py"
     f.write_text(src)
-    violations = _check([f], fake_embedder)
+    violations = _check([f], fake_embedder, skip_call_edges=True)
     assert [v for v in violations if "`Alpha.render`" in v.message and "`Gamma.emit`" in v.message]
 
 
-def test_skip_nested_functions_false_restores_the_parent_child_pair(
+def test_nested_function_pairs_are_reported_unless_the_skip_is_opted_into(
     tmp_path: Path, fake_embedder: Embedder
 ) -> None:
-    """The containment skip is configurable off."""
+    """The containment skip is off by default and stays off when set explicitly."""
     src = """
 def build_edit_retaining_history_processor(history):
     def process(edit):
@@ -424,13 +424,14 @@ def build_edit_retaining_history_processor(history):
 """
     f = tmp_path / "mod.py"
     f.write_text(src)
+    assert _check([f], fake_embedder)
     assert _check([f], fake_embedder, skip_nested_functions=False)
 
 
-def test_skip_call_edges_false_restores_the_caller_callee_pair(
+def test_caller_callee_pairs_are_reported_unless_the_skip_is_opted_into(
     tmp_path: Path, fake_embedder: Embedder
 ) -> None:
-    """The call-edge skip is configurable off."""
+    """The call-edge skip is off by default and stays off when set explicitly."""
     src = """
 def resolve_price_id(plan_code, billing_cycle):
     prices = load_price_table()
@@ -446,4 +447,5 @@ def matching_price_for_plan(price_id, billing_cycle):
 """
     f = tmp_path / "mod.py"
     f.write_text(src)
+    assert _check([f], fake_embedder, threshold=0.85)
     assert _check([f], fake_embedder, threshold=0.85, skip_call_edges=False)
