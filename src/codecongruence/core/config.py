@@ -18,18 +18,22 @@ Resolution order (highest priority wins):
 
 from __future__ import annotations
 
+import re
 import tomllib
+from functools import cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
     "DEFAULT_CACHE_TTL_DAYS",
     "DEFAULT_EMBED_BATCH_SIZE",
     "DEFAULT_MODEL",
+    "STRIP_PATTERN_FLAGS",
     "CodeCongruenceConfig",
     "RuleConfig",
+    "compile_strip_patterns",
     "default_config_path",
     "discover_config_path",
     "load_config",
@@ -46,6 +50,38 @@ DEFAULT_EMBED_BATCH_SIZE = 16
 
 DEFAULT_CACHE_TTL_DAYS = 30
 
+# ``^``/``$`` anchor per line, which is what a line-oriented boilerplate pattern
+# expects. Multi-line frames opt in with an inline ``(?s)``.
+STRIP_PATTERN_FLAGS = re.MULTILINE
+
+
+@cache
+def compile_strip_patterns(patterns: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
+    """Compile ``strip_before_compare`` patterns once per distinct pattern set.
+
+    Config owns the compile so the same call both validates at load time and
+    serves the runtime, and a rule pays the compile cost once per run rather
+    than once per compared pair.
+
+    Args:
+        patterns: Regular expression sources, as a hashable tuple.
+
+    Returns:
+        The compiled patterns, in the given order.
+
+    Raises:
+        ValueError: If a pattern is not a valid regular expression. The message
+            names the offending pattern.
+    """
+    compiled: list[re.Pattern[str]] = []
+    for pattern in patterns:
+        try:
+            compiled.append(re.compile(pattern, STRIP_PATTERN_FLAGS))
+        except re.error as exc:
+            msg = f"invalid strip_before_compare regular expression {pattern!r}: {exc}"
+            raise ValueError(msg) from exc
+    return tuple(compiled)
+
 
 class RuleConfig(BaseModel):
     """Per-rule configuration. Unknown keys are preserved as ``extras``."""
@@ -56,6 +92,21 @@ class RuleConfig(BaseModel):
     threshold: float | None = None
     exclude: list[str] = Field(default_factory=list)
     exclude_functions: list[str] = Field(default_factory=list)
+    # Regular expressions removed from both sides before similarity is computed.
+    # A declared field rather than an extra so an invalid pattern fails at config
+    # load with the pattern in the message. It is a general option for the
+    # similarity rules; only C003 reads it today.
+    strip_before_compare: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def check_strip_before_compare(self) -> RuleConfig:
+        """Reject an unparsable pattern at config load rather than mid-run.
+
+        Returns:
+            The unchanged config once every pattern compiles.
+        """
+        compile_strip_patterns(tuple(self.strip_before_compare))
+        return self
 
     def extra(self, key: str, default: Any = None) -> Any:
         """Return an unknown-but-allowed extra option from the rule config.

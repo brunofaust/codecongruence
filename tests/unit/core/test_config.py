@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from codecongruence.core.config import discover_config_path, load_config
+import pytest
+from pydantic import ValidationError
+
+from codecongruence.core.config import compile_strip_patterns, discover_config_path, load_config
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -199,3 +202,41 @@ enabled = true
     cfg = load_config(repo_root=tmp_path)
     rc = cfg.rule("docstring_vs_body")
     assert rc.threshold is None
+
+
+def test_invalid_strip_pattern_fails_at_config_load(tmp_path: Path) -> None:
+    """A bad regex is rejected when the config is read, naming the pattern."""
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+
+[rules.duplicate_functions]
+strip_before_compare = ["^ok$", "raise HTTPException("]
+"""
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        load_config(repo_root=tmp_path)
+    assert "raise HTTPException(" in str(excinfo.value)
+    assert "strip_before_compare" in str(excinfo.value)
+
+
+def test_valid_strip_patterns_load_and_compile_once(tmp_path: Path) -> None:
+    """Valid patterns survive the load and compile to a cached tuple."""
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+
+[rules.duplicate_functions]
+strip_before_compare = ['^\\s*audit_log\\(.*\\)\\s*$']
+"""
+    )
+    cfg = load_config(repo_root=tmp_path)
+    patterns = cfg.rule("duplicate_functions").strip_before_compare
+    assert patterns == [r"^\s*audit_log\(.*\)\s*$"]
+    assert compile_strip_patterns(tuple(patterns)) is compile_strip_patterns(tuple(patterns))
+
+
+def test_strip_before_compare_defaults_to_empty(tmp_path: Path) -> None:
+    """An absent option is an empty list, so stripping is a no-op by default."""
+    cfg = load_config(repo_root=tmp_path)
+    assert cfg.rule("duplicate_functions").strip_before_compare == []

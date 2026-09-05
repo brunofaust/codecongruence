@@ -173,6 +173,16 @@ include_comments = true
 skip_nested_functions = false
 skip_call_edges = false
 
+# Regexes removed from BOTH sides before similarity is computed, so what gets
+# compared is the distinctive remainder rather than your house style.  Use TOML
+# literal strings (single quotes) so backslashes survive.  An invalid pattern
+# fails at config load, naming the pattern.  Empty (the default) is a no-op.
+strip_before_compare = []
+
+# If a strip leaves fewer than this many non-whitespace characters, the pair is
+# compared UNSTRIPPED instead: two near-empty remnants would match on nothing.
+strip_min_remnant_chars = 24
+
 # ===============================================================================
 # Rule: D001 — docstring_vs_body
 #

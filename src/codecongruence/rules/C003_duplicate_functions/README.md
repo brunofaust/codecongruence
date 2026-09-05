@@ -13,6 +13,8 @@ false positives on legitimate similar-but-distinct functions.
 1. Collect all functions from the files in scope (see `scope` config).
 1. Include or strip inline comments according to `include_comments` (comments
     are included by default for backwards compatibility).
+1. Remove every `strip_before_compare` match from the body — see
+    [Stripping house-style boilerplate](#stripping-house-style-boilerplate).
 1. Embed all bodies in a single batch call (one ONNX pass regardless of how
     many functions are in scope).
 1. Compute pairwise cosine similarity in NumPy.
@@ -31,13 +33,76 @@ min_body_statement_count = 3   # skip trivial one-liners
 include_comments = true        # include inline comments (default)
 skip_nested_functions = false  # opt in to drop closure-vs-parent pairs
 skip_call_edges = false        # opt in to drop wrapper-vs-callee pairs
+strip_min_remnant_chars = 24   # floor below which a strip is not trusted
 exclude = ["tests/**"]
+
+# Regexes removed from both sides before comparison. Use TOML *literal*
+# strings (single quotes) so backslashes reach the regex engine intact.
+strip_before_compare = [
+    '^\s*raise HTTPException\(.*\)\s*$',
+    '^\s*(?:logger|log)\.\w+\(.*\)\s*$',
+]
 ```
 
 Set `include_comments = false` when comment-only edits must not change C003's
 similarity input. Python `#` comments and nested definition docstrings are
 removed with tree-sitter, while JavaScript/TypeScript `//` comments use the
 shared line helper from C001 and D001.
+
+### Stripping house-style boilerplate
+
+`strip_before_compare` is a list of **regular expressions** removed from every
+function body before it is embedded. It exists because the boilerplate that
+makes unrelated functions look alike is project-specific: codecongruence
+supplies the stripping, your project supplies its own patterns, so the tool
+never has to know what FastAPI or boto3 is.
+
+Regexes, not literal strings, because the real frames vary in their payload —
+one pattern has to cover both of these:
+
+```python
+raise HTTPException(status_code=404, detail="org not found")
+raise HTTPException(status_code=404, detail="plan not found")
+```
+
+Notes:
+
+- Patterns are compiled once per run with `re.MULTILINE`, so `^` and `$`
+    anchor per line. A multi-line frame opts in with an inline `(?s)`.
+- Every occurrence is removed, and the blank lines left behind are closed up.
+- Write them as TOML **literal** strings (`'…'`), or every backslash needs
+    doubling.
+- An invalid pattern is rejected when the config is *loaded*, with the
+    offending pattern in the error. It is never silently skipped.
+- The default is an empty list, which is a strict no-op.
+
+Stripping is applied to **both** sides and excludes nothing from comparison —
+only the shared frame is removed, so what gets measured is the distinctive
+remainder. That raises discrimination in both directions, and a pair that
+becomes *newly* reported after stripping is the feature working, not a false
+positive: an identical `db.query`/`fetchone` body wrapped in signature checks
+and session bookkeeping scores 0.824 with the frame and 0.922 without it, so
+the boilerplate was hiding a real duplicate.
+
+#### `strip_min_remnant_chars` (default `24`)
+
+Over-stripping is the one way this option can *lower* the bar: if a pattern
+eats almost everything, two near-empty remnants match each other on nothing at
+all. When a stripped body keeps fewer than `strip_min_remnant_chars`
+non-whitespace characters, any pair involving it is compared **unstripped**
+instead.
+
+Falling back rather than skipping the pair is deliberate. Skipping would be a
+suppression, and C003 suppresses nothing by default; falling back also
+preserves the true positive where two functions really are nothing but the
+same boilerplate. The cost is that a pair whose two sides land on opposite
+sides of the floor is compared unstripped, which can only *miss* a finding,
+never invent one. Note that comparison mode is therefore a property of the
+*pair*, not of the function: a function whose remnant clears the floor is still
+compared unstripped against a partner whose remnant does not, so the same
+function can be compared both ways within one run.
+`min_body_statement_count` is still measured before stripping, so a
+heavily-boilerplate function is never dropped from the corpus.
 
 ### Structural exclusions (opt-in)
 

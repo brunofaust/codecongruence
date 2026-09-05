@@ -449,3 +449,143 @@ def matching_price_for_plan(price_id, billing_cycle):
     f.write_text(src)
     assert _check([f], fake_embedder, threshold=0.85)
     assert _check([f], fake_embedder, threshold=0.85, skip_call_edges=False)
+
+
+_HOUSE_STYLE_PATTERNS = [
+    r"^\s*(?:validate_request_signature|audit_log|session\.\w+)\(.*\)\s*$",
+    r"^\s*(?:\w+ = )?mailer\.\w+\(.*\)\s*$",
+    r"^\s*return record\s*$",
+]
+
+_SHARED_FRAME = """
+def create_org(payload, session):
+    validate_request_signature(payload)
+    audit_log("create", payload)
+    session.begin()
+    session.flush()
+    record = Org(name=payload.name)
+    session.add(record)
+    session.refresh(record)
+    session.commit()
+    audit_log("created", payload)
+    return record
+
+def create_plan(payload, session):
+    validate_request_signature(payload)
+    audit_log("create", payload)
+    session.begin()
+    session.flush()
+    record = Plan(code=payload.code)
+    session.add(record)
+    session.refresh(record)
+    session.commit()
+    audit_log("created", payload)
+    return record
+"""
+
+
+def test_strip_before_compare_removes_the_shared_frame(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Two functions differing only in boilerplate stop matching once it is stripped."""
+    f = tmp_path / "mod.py"
+    f.write_text(_SHARED_FRAME)
+    # Unstripped the frame carries the pair to 0.938; the remnants score 0.286.
+    assert _check([f], fake_embedder)
+    assert _check([f], fake_embedder, strip_before_compare=_HOUSE_STYLE_PATTERNS) == []
+
+
+def test_strip_before_compare_keeps_genuine_duplicates_reported(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Stripping removes the shared frame, never the distinctive remainder.
+
+    Stripping raises discrimination in both directions: a frameless duplicate
+    stays reported, and one whose frame diluted it becomes reported.
+    """
+    plain = """
+def fetch_user_by_id(uid):
+    row = db.query("SELECT * FROM users WHERE id = %s", uid)
+    result = row.fetchone()
+    return result
+
+def load_user(user_id):
+    row = db.query("SELECT * FROM users WHERE id = %s", user_id)
+    result = row.fetchone()
+    return result
+"""
+    frameless = tmp_path / "plain.py"
+    frameless.write_text(plain)
+    assert _check([frameless], fake_embedder, strip_before_compare=_HOUSE_STYLE_PATTERNS)
+
+    src = """
+def fetch_user_by_id(uid, session):
+    validate_request_signature(uid)
+    session.begin()
+    row = db.query("SELECT * FROM users WHERE id = %s", uid)
+    result = row.fetchone()
+    session.commit()
+    return result
+
+def load_user(user_id, session):
+    validate_request_signature(user_id)
+    session.begin()
+    row = db.query("SELECT * FROM users WHERE id = %s", user_id)
+    result = row.fetchone()
+    session.commit()
+    return result
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    # The shared frame drags this genuine duplicate down to 0.824; the remnants
+    # score 0.922, so stripping surfaces a pair the boilerplate was hiding.
+    assert _check([f], fake_embedder) == []
+    violations = _check([f], fake_embedder, strip_before_compare=_HOUSE_STYLE_PATTERNS)
+    assert [
+        v for v in violations if "`fetch_user_by_id`" in v.message and "`load_user`" in v.message
+    ]
+
+
+def test_strip_min_remnant_chars_guards_over_stripping(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Two near-empty remnants match trivially, so the pair is compared unstripped."""
+    src = """
+def archive_org(payload, session):
+    validate_request_signature(payload)
+    audit_log("archive", payload)
+    session.begin()
+    session.commit()
+    record = None
+    return record
+
+def render_invoice(user, mailer, template, locale):
+    page = mailer.render(template, locale)
+    stamped = mailer.stamp(page, user, locale)
+    mailer.deliver(stamped, user)
+    record = None
+    return record
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    # Both remnants collapse to `record = None` (11 chars): stripped they score
+    # 1.000, unstripped 0.187. Without the floor the strip invents a match.
+    assert _check(
+        [f],
+        fake_embedder,
+        strip_before_compare=_HOUSE_STYLE_PATTERNS,
+        strip_min_remnant_chars=0,
+    )
+    assert _check([f], fake_embedder, strip_before_compare=_HOUSE_STYLE_PATTERNS) == []
+
+
+def test_strip_before_compare_absent_or_empty_is_a_no_op(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """No patterns must reproduce the pre-option result exactly."""
+    f = tmp_path / "mod.py"
+    f.write_text(_SHARED_FRAME)
+    baseline = _check([f], fake_embedder)
+    assert [v.message for v in _check([f], fake_embedder, strip_before_compare=[])] == [
+        v.message for v in baseline
+    ]

@@ -69,6 +69,7 @@ threshold = 0.92
 include_comments = true
 skip_nested_functions = false
 skip_call_edges = false
+strip_before_compare = []
 
 [rules.params_in_docstring]
 enabled = true

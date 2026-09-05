@@ -121,6 +121,13 @@ option reference.
 `None` when defaults were used) — handy for debugging "why is this threshold
 not what I set?".
 
+Per-rule options are normally config *extras*, read with `getattr` at the point
+of use. `RuleConfig.strip_before_compare` is the exception: it is a declared
+field so `compile_strip_patterns()` can reject an invalid regular expression
+when the config is loaded rather than mid-run. That same `lru_cache`'d function
+serves the rule at run time, so config owns the compile and patterns are built
+once per run, not once per compared pair.
+
 ### AI context writer (`core/ai_context.py`)
 
 `write_ai_context_files(repo_root, *, force)` is called by `codecongruence init`. It reads templates from the bundled `src/codecongruence/agents/` directory (via `importlib.resources`) and writes them to the user's repo:
