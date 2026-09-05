@@ -6,11 +6,15 @@ import json
 import os
 import re
 import subprocess
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as distribution_version
 from typing import TYPE_CHECKING
 
 import pytest
 from typer.testing import CliRunner
 
+from codecongruence import __version__, cli
+from codecongruence import version as version_module
 from codecongruence.cli import app
 from tests.conftest import base_git_env
 
@@ -42,7 +46,30 @@ def runner() -> CliRunner:
 def test_version_prints_and_exits_zero(runner: CliRunner) -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert "codecongruence" in result.stdout
+    assert result.stdout == f"codecongruence {distribution_version('codecongruence')}\n"
+
+
+def test_package_version_matches_installed_distribution_metadata() -> None:
+    assert __version__ == distribution_version("codecongruence")
+
+
+def test_version_degrades_when_distribution_metadata_is_unavailable(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "resolve_version", lambda: "unavailable")
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.stdout == "codecongruence unavailable\n"
+
+
+def test_resolve_version_degrades_when_distribution_metadata_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_package_not_found(_: str) -> str:
+        raise PackageNotFoundError
+
+    monkeypatch.setattr(version_module, "distribution_version", raise_package_not_found)
+    assert version_module.resolve_version() == "unavailable"
 
 
 def test_help_lists_init_subcommand(runner: CliRunner, monkeypatch: pytest.MonkeyPatch) -> None:

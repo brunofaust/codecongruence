@@ -4,6 +4,7 @@ from codecongruence.core.config import CodeCongruenceConfig, RuleConfig, load_co
 from codecongruence.core.embedder import Embedder
 from codecongruence.core.runner import RuleRunner, run_rules
 from codecongruence.rules.base import Rule, RuleViolation, Severity
+from codecongruence.version import __version__
 
 __all__ = [
     "CodeCongruenceConfig",
@@ -17,5 +18,3 @@ __all__ = [
     "load_config",
     "run_rules",
 ]
-
-__version__ = "0.1.0"

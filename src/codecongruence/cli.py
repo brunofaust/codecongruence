@@ -8,7 +8,6 @@ from typing import Annotated
 
 import typer
 
-from codecongruence import __version__
 from codecongruence.core.ai_context import write_ai_context_files
 from codecongruence.core.baseline import apply_baseline, baseline_path, load_baseline, save_baseline
 from codecongruence.core.config import (
@@ -23,6 +22,7 @@ from codecongruence.core.embedder import Embedder
 from codecongruence.core.git import current_repo_root, main_worktree_root
 from codecongruence.core.runner import RuleRunner, UnknownRuleError
 from codecongruence.reporters import JsonReporter, TextReporter
+from codecongruence.version import resolve_version
 
 __all__ = ["DEFAULT_TOML", "app"]
 
@@ -156,7 +156,7 @@ def version_callback(value: bool) -> None:
         typer.Exit: After printing the version, to stop CLI processing.
     """
     if value:
-        typer.echo(f"codecongruence {__version__}")
+        typer.echo(f"codecongruence {resolve_version()}")
         raise typer.Exit
 
 
