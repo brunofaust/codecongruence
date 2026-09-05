@@ -65,6 +65,10 @@ enabled = true
 threshold = 0.92
 min_body_statement_count = 3
 scope = "staged"
+skip_nested_functions = false
+skip_call_edges = false
+# No house-style frame to remove here; keep the self-check a strict no-op.
+strip_before_compare = []
 # Tests. Cases for one function are arrange-act-assert siblings by design — they
 # differ only in the input and the expected result, which is what makes them
 # readable. Deduping them (a shared parametrized mega-test) would HIDE which case

@@ -163,6 +163,45 @@ enabled = true
 threshold = 0.92
 include_comments = true
 
+# Opt-in audit aids, both OFF by default.  They suppress two pair shapes that
+# overlap by construction — a closure inside its parent, and a wrapper that
+# calls its callee — but a suppressed pair is an invisible, permanent false
+# negative, while a false positive costs one dismissal.  Turn them on only when
+# a run is drowning in those shapes, and turn them back off before a dedup
+# audit.  `skip_call_edges` resolves calls for Python only; it is inert for
+# JS/TS, and it can hide a genuine duplicate that happens to call its twin.
+skip_nested_functions = false
+skip_call_edges = false
+
+# Regexes removed from BOTH sides before similarity is computed, so what gets
+# compared is the distinctive remainder rather than your house style.  Use TOML
+# literal strings (single quotes) so backslashes survive.  An invalid pattern or
+# glob fails at config load, naming the value.  Empty (the default) is a no-op.
+#
+# This flat list is UNSCOPED — it applies to every function.  Two sibling tables
+# scope patterns so one area's boilerplate is not stripped everywhere:
+#
+#   [rules.duplicate_functions.strip_before_compare_by_path]     key = file glob
+#   'tests/**/a*.py' = ['^\s*self\.assert\w+\(.*\)\s*$']
+#
+#   [rules.duplicate_functions.strip_before_compare_by_symbol]   key = name regex
+#   '^test_' = ['^\s*monkeypatch\.\w+\(.*\)\s*$']
+#
+# The table says which kind of key it is, so a reader never has to guess whether
+# a string is a glob or a regex.  Scopes compose: a function gets the union of
+# the unscoped patterns and every scope it matches.  Globs match the
+# REPO-RELATIVE POSIX path, so they behave the same from any directory, and use
+# the same fnmatch dialect as `exclude` (matched case-sensitively).  Symbol
+# regexes are `re.search`ed against the function's simple name.
+#
+# These keys live on the shared rule config, but only C003 applies them today:
+# setting them under another rule validates and then does nothing.
+strip_before_compare = []
+
+# If a strip leaves fewer than this many non-whitespace characters, the pair is
+# compared UNSTRIPPED instead: two near-empty remnants would match on nothing.
+strip_min_remnant_chars = 24
+
 # ===============================================================================
 # Rule: D001 — docstring_vs_body
 #

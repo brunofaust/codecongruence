@@ -121,6 +121,19 @@ option reference.
 `None` when defaults were used) — handy for debugging "why is this threshold
 not what I set?".
 
+Per-rule options are normally config *extras*, read with `getattr` at the point
+of use. The `strip_before_compare` family is the exception: `strip_before_compare`
+(unscoped), `strip_before_compare_by_path` (keyed by file glob) and
+`strip_before_compare_by_symbol` (keyed by symbol-name regex) are declared
+fields, so `compile_strip_rules()` can reject an invalid regular expression or
+glob when the config is loaded rather than mid-run. The kind of key is carried
+by the table, not inferred from the string. That same `cache`d function serves
+the rule at run time, so config owns compilation and every pattern, glob and
+symbol regex is built once per run; the rule then memoises each function's
+resolved pattern set per `(file, symbol)`, so scope matching never repeats per
+compared pair. `scope_path()` anchors matching on the repo root, which is what
+makes a glob independent of the process working directory.
+
 ### AI context writer (`core/ai_context.py`)
 
 `write_ai_context_files(repo_root, *, force)` is called by `codecongruence init`. It reads templates from the bundled `src/codecongruence/agents/` directory (via `importlib.resources`) and writes them to the user's repo:
@@ -145,7 +158,12 @@ trace.
 - `iter_functions(source, path)` — yields `FunctionInfo` per
     `FunctionDef` / `AsyncFunctionDef`, **stripping** the `def` signature line
     and the docstring node from `body_source` (critical for honest similarity
-    scores).
+    scores). `FunctionInfo` also carries `line_start`/`line_end` (used by C003
+    by C003's opt-in `skip_nested_functions`) and `called_names` — the
+    unqualified `f()` call targets found in the body, used by C003's opt-in
+    `skip_call_edges`. Only the Python parser populates `called_names`; others
+    leave it empty. Both skips default to off: C003 exists to find equal code,
+    so it never suppresses a pair unless asked.
 - `iter_comments(source, context_lines)` — yields comment + the following
     non-comment, non-blank code window. Skips shebangs, pragmas (`# type: ignore`, `# noqa:`, ...), TODO markers, and comments shorter than four
     words.

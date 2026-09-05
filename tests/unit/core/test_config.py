@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
-from codecongruence.core.config import discover_config_path, load_config
+import pytest
+from pydantic import ValidationError
 
-if TYPE_CHECKING:
-    from pathlib import Path
+from codecongruence.core.config import (
+    compile_strip_patterns,
+    discover_config_path,
+    load_config,
+    scope_path,
+)
 
 
 def test_default_when_file_missing(tmp_path: Path) -> None:
@@ -199,3 +204,111 @@ enabled = true
     cfg = load_config(repo_root=tmp_path)
     rc = cfg.rule("docstring_vs_body")
     assert rc.threshold is None
+
+
+def test_invalid_strip_pattern_fails_at_config_load(tmp_path: Path) -> None:
+    """A bad regex is rejected when the config is read, naming the pattern."""
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+
+[rules.duplicate_functions]
+strip_before_compare = ["^ok$", "raise HTTPException("]
+"""
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        load_config(repo_root=tmp_path)
+    assert "raise HTTPException(" in str(excinfo.value)
+    assert "strip_before_compare" in str(excinfo.value)
+
+
+def test_valid_strip_patterns_load_and_compile_once(tmp_path: Path) -> None:
+    """Valid patterns survive the load and compile to a cached tuple."""
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+
+[rules.duplicate_functions]
+strip_before_compare = ['^\\s*audit_log\\(.*\\)\\s*$']
+"""
+    )
+    cfg = load_config(repo_root=tmp_path)
+    patterns = cfg.rule("duplicate_functions").strip_before_compare
+    assert patterns == [r"^\s*audit_log\(.*\)\s*$"]
+    assert compile_strip_patterns(tuple(patterns)) is compile_strip_patterns(tuple(patterns))
+
+
+def test_strip_before_compare_defaults_to_empty(tmp_path: Path) -> None:
+    """An absent option is an empty list, so stripping is a no-op by default."""
+    cfg = load_config(repo_root=tmp_path)
+    assert cfg.rule("duplicate_functions").strip_before_compare == []
+
+
+def test_invalid_strip_scope_glob_fails_at_config_load(tmp_path: Path) -> None:
+    """A malformed file glob is rejected when the config is read, naming the glob."""
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+
+[rules.duplicate_functions.strip_before_compare_by_path]
+"/absolute/**/*.py" = ['^ok$']
+"""
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        load_config(repo_root=tmp_path)
+    assert "/absolute/**/*.py" in str(excinfo.value)
+    assert "repo-relative" in str(excinfo.value)
+
+
+def test_invalid_strip_scope_symbol_regex_fails_at_config_load(tmp_path: Path) -> None:
+    """A malformed symbol regex is rejected at load, naming the pattern."""
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+
+[rules.duplicate_functions.strip_before_compare_by_symbol]
+"^create_[" = ['^ok$']
+"""
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        load_config(repo_root=tmp_path)
+    assert "^create_[" in str(excinfo.value)
+
+
+def test_strip_scopes_load_and_resolve_by_path_and_symbol(tmp_path: Path) -> None:
+    """The two scoped tables load, keep order, and compose into a union."""
+    (tmp_path / "codecongruence.toml").write_text(
+        """
+[codecongruence]
+
+[rules.duplicate_functions]
+strip_before_compare = ['^\\s*global_frame\\(\\)\\s*$']
+
+[rules.duplicate_functions.strip_before_compare_by_path]
+'tests/**/a*.py' = ['^\\s*test_frame\\(\\)\\s*$']
+
+[rules.duplicate_functions.strip_before_compare_by_symbol]
+'^handle_' = ['^\\s*handler_frame\\(\\)\\s*$']
+"""
+    )
+    rules = load_config(repo_root=tmp_path).rule("duplicate_functions").strip_rules()
+    assert len(rules.patterns_for("tests/unit/alpha.py", "handle_event")) == 3
+    assert len(rules.patterns_for("tests/unit/alpha.py", "other")) == 2
+    assert len(rules.patterns_for("src/beta.py", "handle_event")) == 2
+    assert len(rules.patterns_for("src/beta.py", "other")) == 1
+
+
+def test_scope_path_is_anchored_on_the_repo_root(tmp_path: Path) -> None:
+    """The matched path is repo-relative POSIX regardless of how it arrives."""
+    nested = tmp_path / "tests" / "unit"
+    nested.mkdir(parents=True)
+    (nested / "alpha.py").write_text("")
+    assert scope_path(Path("tests/unit/alpha.py"), tmp_path) == "tests/unit/alpha.py"
+    assert scope_path(nested / "alpha.py", tmp_path) == "tests/unit/alpha.py"
+
+
+def test_strip_scopes_default_to_empty(tmp_path: Path) -> None:
+    """Absent scoped tables leave the compiled rules falsy — a strict no-op."""
+    rules = load_config(repo_root=tmp_path).rule("duplicate_functions").strip_rules()
+    assert not rules
+    assert rules.patterns_for("anything.py", "anything") == ()

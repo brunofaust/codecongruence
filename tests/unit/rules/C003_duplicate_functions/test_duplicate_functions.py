@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -12,7 +13,6 @@ from codecongruence.rules.C003_duplicate_functions import DuplicateFunctionsRule
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
-    from pathlib import Path
 
     from numpy.typing import NDArray
 
@@ -20,11 +20,15 @@ if TYPE_CHECKING:
 
 
 def _check(
-    files: list[Path], emb: Embedder, threshold: float = 0.92, scope: str = "staged"
+    files: list[Path],
+    emb: Embedder,
+    threshold: float = 0.92,
+    scope: str = "staged",
+    **options: object,
 ) -> Sequence[RuleViolation]:
     rule = DuplicateFunctionsRule()
     changed = [ChangedFile(path=f, added_ranges=()) for f in files]
-    cfg = RuleConfig(threshold=threshold, scope=scope)
+    cfg = RuleConfig(threshold=threshold, scope=scope, **options)
     return asyncio.run(rule.check(changed, emb, cfg))
 
 
@@ -261,3 +265,517 @@ def short():
     path.write_text(path.read_text().replace("  # commentary", ""))
     assert await DuplicateFunctionsRule._collect(changed, "staged", 3, False) == []
     assert len(await DuplicateFunctionsRule._collect(changed, "staged", 2, False)) == 1
+
+
+def test_skips_nested_closure_against_its_enclosing_function(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """A closure's source is contained in its parent's, so the pair scores high by construction."""
+    src = """
+def build_edit_retaining_history_processor(history):
+    def process(edit):
+        edit = attach_history(edit, history)
+        edit = normalize_ranges(edit)
+        edit = drop_empty_hunks(edit)
+        edit = renumber(edit)
+        return edit
+    register(process)
+    return process
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    # Without the containment skip this pair scores 0.957 against the 0.92 default.
+    assert _check([f], fake_embedder, skip_nested_functions=True) == []
+
+
+def test_skips_caller_against_its_callee(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """A wrapper that delegates to another function is single-owner design, not duplication."""
+    src = """
+def resolve_price_id(plan_code, billing_cycle):
+    prices = load_price_table()
+    key = (plan_code, billing_cycle)
+    price_id = prices[key]
+    return price_id
+
+def matching_price_for_plan(price_id, billing_cycle):
+    prices = load_price_table()
+    plan_code = reverse_lookup(prices, price_id)
+    price_id = resolve_price_id(plan_code, billing_cycle)
+    return price_id
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    # The bag-of-words fixture scores this realistic wrapper pair at 0.870, so the
+    # threshold is lowered to keep the test about the call-edge skip, not tuning.
+    assert _check([f], fake_embedder, threshold=0.85, skip_call_edges=True) == []
+
+
+def test_still_flags_genuine_top_level_duplicates(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """The suppressions must not blind the rule to real duplicate pairs."""
+    src = """
+def fetch_user_by_id(uid):
+    row = db.query("SELECT * FROM users WHERE id = %s", uid)
+    result = row.fetchone()
+    return result
+
+def load_user(user_id):
+    row = db.query("SELECT * FROM users WHERE id = %s", user_id)
+    result = row.fetchone()
+    return result
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check([f], fake_embedder)
+    assert [
+        v for v in violations if "`fetch_user_by_id`" in v.message and "`load_user`" in v.message
+    ]
+
+
+def test_sibling_closures_in_the_same_parent_are_still_compared(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Sibling closures never enclose each other, so a real duplicate between them is reported."""
+    src = """
+def outer(source):
+    def first(record):
+        row = db.query("SELECT * FROM users WHERE id = %s", record)
+        result = row.fetchone()
+        return result
+    def second(item):
+        row = db.query("SELECT * FROM users WHERE id = %s", item)
+        result = row.fetchone()
+        return result
+    return first(source) + second(source)
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check([f], fake_embedder)
+    assert [v for v in violations if "`outer.first`" in v.message and "`outer.second`" in v.message]
+
+
+def test_call_edge_skip_requires_an_unambiguous_callee_name(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Two classes owning a same-named method make the call target ambiguous — no skip."""
+    src = """
+class Alpha:
+    def render(self, doc):
+        doc = normalize_document(doc)
+        doc = expand_macros(doc)
+        doc = collapse_whitespace(doc)
+        return doc
+
+class Beta:
+    def render(self, doc):
+        doc = normalize_document(doc)
+        doc = expand_macros(doc)
+        doc = collapse_whitespace(doc)
+        return doc
+
+def emit(doc):
+    doc = normalize_document(doc)
+    doc = expand_macros(doc)
+    doc = collapse_whitespace(doc)
+    return render(doc)
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check([f], fake_embedder, skip_call_edges=True)
+    assert [v for v in violations if "`emit`" in v.message and "`Alpha.render`" in v.message]
+
+
+def test_self_call_is_not_treated_as_a_call_edge(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """``self.render`` cannot resolve to another class's ``render`` — no skip."""
+    src = """
+class Alpha:
+    def render(self, doc):
+        doc = normalize_document(doc)
+        doc = expand_macros(doc)
+        doc = collapse_whitespace(doc)
+        return doc
+
+class Gamma:
+    def emit(self, doc):
+        doc = normalize_document(doc)
+        doc = expand_macros(doc)
+        doc = collapse_whitespace(doc)
+        return self.render(doc)
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    violations = _check([f], fake_embedder, skip_call_edges=True)
+    assert [v for v in violations if "`Alpha.render`" in v.message and "`Gamma.emit`" in v.message]
+
+
+def test_nested_function_pairs_are_reported_unless_the_skip_is_opted_into(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """The containment skip is off by default and stays off when set explicitly."""
+    src = """
+def build_edit_retaining_history_processor(history):
+    def process(edit):
+        edit = attach_history(edit, history)
+        edit = normalize_ranges(edit)
+        edit = drop_empty_hunks(edit)
+        edit = renumber(edit)
+        return edit
+    register(process)
+    return process
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    assert _check([f], fake_embedder)
+    assert _check([f], fake_embedder, skip_nested_functions=False)
+
+
+def test_caller_callee_pairs_are_reported_unless_the_skip_is_opted_into(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """The call-edge skip is off by default and stays off when set explicitly."""
+    src = """
+def resolve_price_id(plan_code, billing_cycle):
+    prices = load_price_table()
+    key = (plan_code, billing_cycle)
+    price_id = prices[key]
+    return price_id
+
+def matching_price_for_plan(price_id, billing_cycle):
+    prices = load_price_table()
+    plan_code = reverse_lookup(prices, price_id)
+    price_id = resolve_price_id(plan_code, billing_cycle)
+    return price_id
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    assert _check([f], fake_embedder, threshold=0.85)
+    assert _check([f], fake_embedder, threshold=0.85, skip_call_edges=False)
+
+
+_HOUSE_STYLE_PATTERNS = [
+    r"^\s*(?:validate_request_signature|audit_log|session\.\w+)\(.*\)\s*$",
+    r"^\s*(?:\w+ = )?mailer\.\w+\(.*\)\s*$",
+    r"^\s*return record\s*$",
+]
+
+_SHARED_FRAME = """
+def create_org(payload, session):
+    validate_request_signature(payload)
+    audit_log("create", payload)
+    session.begin()
+    session.flush()
+    record = Org(name=payload.name)
+    session.add(record)
+    session.refresh(record)
+    session.commit()
+    audit_log("created", payload)
+    return record
+
+def create_plan(payload, session):
+    validate_request_signature(payload)
+    audit_log("create", payload)
+    session.begin()
+    session.flush()
+    record = Plan(code=payload.code)
+    session.add(record)
+    session.refresh(record)
+    session.commit()
+    audit_log("created", payload)
+    return record
+"""
+
+
+def _check_tree(
+    root: Path,
+    relative_paths: list[str],
+    source: str,
+    emb: Embedder,
+    threshold: float = 0.92,
+    **options: object,
+) -> Sequence[RuleViolation]:
+    """Run the rule over repo-relative paths under ``root``, as the runner does."""
+    rule = DuplicateFunctionsRule()
+    changed = []
+    for relative in relative_paths:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+        changed.append(ChangedFile(path=Path(relative), added_ranges=(), repo_root=root))
+    cfg = RuleConfig(threshold=threshold, **options)
+    return asyncio.run(rule.check(changed, emb, cfg))
+
+
+_FRAME_PATTERNS = [
+    r"^\s*(?:validate_request_signature|audit_log)\(.*\)\s*$",
+    r"^\s*session\.\w+\(.*\)\s*$",
+    r"^\s*return record\s*$",
+]
+_SESSION_PATTERN = r"^\s*session\.\w+\(.*\)\s*$"
+_AUDIT_PATTERNS = [
+    r"^\s*(?:validate_request_signature|audit_log)\(.*\)\s*$",
+    r"^\s*return record\s*$",
+]
+
+
+def test_strip_scope_by_path_applies_only_to_matching_files(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """A path-scoped pattern strips inside its glob and nowhere else."""
+    scope = {"tests/**/a*.py": _FRAME_PATTERNS}
+    # Unstripped the frame carries the pair to 0.938; stripped they score 0.286.
+    assert (
+        _check_tree(
+            tmp_path,
+            ["tests/unit/alpha.py"],
+            _SHARED_FRAME,
+            fake_embedder,
+            strip_before_compare_by_path=scope,
+        )
+        == []
+    )
+    assert _check_tree(
+        tmp_path,
+        ["src/billing/beta.py"],
+        _SHARED_FRAME,
+        fake_embedder,
+        strip_before_compare_by_path=scope,
+    )
+
+
+def test_strip_scope_by_symbol_applies_only_to_matching_names(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """A symbol-scoped pattern strips for matching function names and no others."""
+    scope = {"^create_": _FRAME_PATTERNS}
+    assert (
+        _check_tree(
+            tmp_path,
+            ["src/a.py"],
+            _SHARED_FRAME,
+            fake_embedder,
+            strip_before_compare_by_symbol=scope,
+        )
+        == []
+    )
+    renamed = _SHARED_FRAME.replace("def create_", "def build_")
+    assert _check_tree(
+        tmp_path,
+        ["src/b.py"],
+        renamed,
+        fake_embedder,
+        strip_before_compare_by_symbol=scope,
+    )
+
+
+def test_unscoped_strip_patterns_apply_everywhere(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """The flat list needs no glob to reach every file."""
+    for relative in ("tests/unit/alpha.py", "src/billing/beta.py"):
+        assert (
+            _check_tree(
+                tmp_path,
+                [relative],
+                _SHARED_FRAME,
+                fake_embedder,
+                strip_before_compare=_FRAME_PATTERNS,
+            )
+            == []
+        )
+
+
+def test_strip_scopes_compose_into_a_union(tmp_path: Path, fake_embedder: Embedder) -> None:
+    """A function matching two scopes is stripped by both of their patterns."""
+    path_scope = {"tests/**/a*.py": [_SESSION_PATTERN]}
+    symbol_scope = {"^create_": _AUDIT_PATTERNS}
+    matching = ["tests/unit/alpha.py"]
+    # Measured: no strip 0.938, path scope alone 0.868, symbol scope alone
+    # 0.889, the union 0.286. Only the union clears a 0.85 threshold, so the
+    # test fails unless both scopes contribute.
+    assert _check_tree(tmp_path, matching, _SHARED_FRAME, fake_embedder, threshold=0.85)
+    assert _check_tree(
+        tmp_path,
+        matching,
+        _SHARED_FRAME,
+        fake_embedder,
+        threshold=0.85,
+        strip_before_compare_by_path=path_scope,
+    )
+    assert _check_tree(
+        tmp_path,
+        matching,
+        _SHARED_FRAME,
+        fake_embedder,
+        threshold=0.85,
+        strip_before_compare_by_symbol=symbol_scope,
+    )
+    assert (
+        _check_tree(
+            tmp_path,
+            matching,
+            _SHARED_FRAME,
+            fake_embedder,
+            threshold=0.85,
+            strip_before_compare_by_path=path_scope,
+            strip_before_compare_by_symbol=symbol_scope,
+        )
+        == []
+    )
+
+
+def test_path_scope_matches_the_repo_relative_path_not_the_absolute_one(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Globs anchor on the repo root, so the same glob works from any directory."""
+    # An absolute-path glob is rejected at load, and a repo-relative one matches
+    # even though the file lives under a long temporary absolute prefix.
+    assert (
+        _check_tree(
+            tmp_path,
+            ["tests/unit/alpha.py"],
+            _SHARED_FRAME,
+            fake_embedder,
+            strip_before_compare_by_path={"tests/*/alpha.py": _FRAME_PATTERNS},
+        )
+        == []
+    )
+
+
+def test_strip_before_compare_removes_the_shared_frame(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Two functions differing only in boilerplate stop matching once it is stripped."""
+    f = tmp_path / "mod.py"
+    f.write_text(_SHARED_FRAME)
+    # Unstripped the frame carries the pair to 0.938; the remnants score 0.286.
+    assert _check([f], fake_embedder)
+    assert _check([f], fake_embedder, strip_before_compare=_HOUSE_STYLE_PATTERNS) == []
+
+
+def test_strip_before_compare_keeps_genuine_duplicates_reported(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Stripping removes the shared frame, never the distinctive remainder.
+
+    Stripping raises discrimination in both directions: a frameless duplicate
+    stays reported, and one whose frame diluted it becomes reported.
+    """
+    plain = """
+def fetch_user_by_id(uid):
+    row = db.query("SELECT * FROM users WHERE id = %s", uid)
+    result = row.fetchone()
+    return result
+
+def load_user(user_id):
+    row = db.query("SELECT * FROM users WHERE id = %s", user_id)
+    result = row.fetchone()
+    return result
+"""
+    frameless = tmp_path / "plain.py"
+    frameless.write_text(plain)
+    assert _check([frameless], fake_embedder, strip_before_compare=_HOUSE_STYLE_PATTERNS)
+
+    src = """
+def fetch_user_by_id(uid, session):
+    validate_request_signature(uid)
+    session.begin()
+    row = db.query("SELECT * FROM users WHERE id = %s", uid)
+    result = row.fetchone()
+    session.commit()
+    return result
+
+def load_user(user_id, session):
+    validate_request_signature(user_id)
+    session.begin()
+    row = db.query("SELECT * FROM users WHERE id = %s", user_id)
+    result = row.fetchone()
+    session.commit()
+    return result
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    # The shared frame drags this genuine duplicate down to 0.824; the remnants
+    # score 0.922, so stripping surfaces a pair the boilerplate was hiding.
+    assert _check([f], fake_embedder) == []
+    violations = _check([f], fake_embedder, strip_before_compare=_HOUSE_STYLE_PATTERNS)
+    assert [
+        v for v in violations if "`fetch_user_by_id`" in v.message and "`load_user`" in v.message
+    ]
+
+
+def test_strip_min_remnant_chars_guards_over_stripping(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """Two near-empty remnants match trivially, so the pair is compared unstripped."""
+    src = """
+def archive_org(payload, session):
+    validate_request_signature(payload)
+    audit_log("archive", payload)
+    session.begin()
+    session.commit()
+    record = None
+    return record
+
+def render_invoice(user, mailer, template, locale):
+    page = mailer.render(template, locale)
+    stamped = mailer.stamp(page, user, locale)
+    mailer.deliver(stamped, user)
+    record = None
+    return record
+"""
+    f = tmp_path / "mod.py"
+    f.write_text(src)
+    # Both remnants collapse to `record = None` (11 chars): stripped they score
+    # 1.000, unstripped 0.187. Without the floor the strip invents a match.
+    assert _check(
+        [f],
+        fake_embedder,
+        strip_before_compare=_HOUSE_STYLE_PATTERNS,
+        strip_min_remnant_chars=0,
+    )
+    assert _check([f], fake_embedder, strip_before_compare=_HOUSE_STYLE_PATTERNS) == []
+
+
+def test_strip_before_compare_absent_or_empty_is_a_no_op(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """No patterns must reproduce the pre-option result exactly."""
+    f = tmp_path / "mod.py"
+    f.write_text(_SHARED_FRAME)
+    baseline = _check([f], fake_embedder)
+    empty = _check(
+        [f],
+        fake_embedder,
+        strip_before_compare=[],
+        strip_before_compare_by_path={},
+        strip_before_compare_by_symbol={},
+    )
+    assert [v.message for v in empty] == [v.message for v in baseline]
+
+
+async def test_an_untouched_short_body_is_never_treated_as_over_stripped(
+    tmp_path: Path, fake_embedder: Embedder
+) -> None:
+    """The floor disqualifies a shortened body, never a small one.
+
+    A short function no pattern touched must stay trusted; otherwise an empty
+    config forces a second corpus-wide embed, and one short bystander drags a
+    correctly stripped pair back to unstripped comparison.
+    """
+    short_source = """
+def tiny(a):
+    x = 1
+    y = 2
+    return x
+"""
+    bystander = tmp_path / "short.py"
+    bystander.write_text(short_source)
+    unconfigured = [ChangedFile(path=bystander, added_ranges=())]
+    entries = await DuplicateFunctionsRule._collect(unconfigured, "staged", 3)
+    assert [e.remnant_ok for e in entries] == [True]
+
+    framed = tmp_path / "frame.py"
+    framed.write_text(_SHARED_FRAME)
+    files = [
+        ChangedFile(path=framed, added_ranges=()),
+        ChangedFile(path=bystander, added_ranges=()),
+    ]
+    cfg = RuleConfig(threshold=0.92, strip_before_compare=_FRAME_PATTERNS)
+    assert await DuplicateFunctionsRule().check(files, fake_embedder, cfg) == []

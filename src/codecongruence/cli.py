@@ -67,6 +67,14 @@ threshold = 0.20
 enabled = true
 threshold = 0.92
 include_comments = true
+skip_nested_functions = false
+skip_call_edges = false
+strip_before_compare = []
+# Scope patterns so one area's boilerplate is not stripped everywhere:
+# [rules.duplicate_functions.strip_before_compare_by_path]
+# 'tests/**/a*.py' = ['^\\s*self\\.assert\\w+\\(.*\\)\\s*$']
+# [rules.duplicate_functions.strip_before_compare_by_symbol]
+# '^test_' = ['^\\s*monkeypatch\\.\\w+\\(.*\\)\\s*$']
 
 [rules.params_in_docstring]
 enabled = true
