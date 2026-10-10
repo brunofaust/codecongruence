@@ -1,6 +1,58 @@
 # CHANGELOG
 
 
+## v0.10.0 (2026-10-10)
+
+### Bug Fixes
+
+- **baseline**: Judge stale entries against each rule's effective scope
+  ([`1c5bd3f`](https://github.com/brunofaust/codecongruence/commit/1c5bd3f8dca6afa7513143a3462deb7d3406dfed))
+
+find_stale used the global changed-file list, so an entry whose file or function a rule's config
+  exclude/exclude_functions removed from that rule's input looked stale, failed the run and was
+  deleted by --prune-baseline.
+
+RunResult now carries rule_scopes (each rule id with the exact filtered files it received) and
+  find_stale judges every entry against its own rule's input, skipping lines inside excluded
+  functions.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+### Chores
+
+- **deps**: Bump dependencies to latest and refresh uv.lock
+  ([`a901ef1`](https://github.com/brunofaust/codecongruence/commit/a901ef16fc780a12be43bee8e079c8c62551e216))
+
+Bumped to the newest releases older than the 7-day supply-chain cooldown.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+### Features
+
+- **baseline**: Report and fail on stale baseline entries; add --prune-baseline
+  ([`f3b00d6`](https://github.com/brunofaust/codecongruence/commit/f3b00d646fd612694eb3915dfab273735088c52b))
+
+Baseline matching is exact on (rule_id, file_path, line), so an entry whose violation was fixed
+  stayed forever and could later absorb a new finding on the same key. Every run now reports stale
+  entries (text on stderr, a stale_baseline_entries key in JSON) and exits non-zero.
+
+An entry is judged only when the rules could have re-found it: its file is in the ChangedFile list
+  passed to the runner, its line is inside that file's added ranges (empty ranges = whole file, as
+  with --all), and its rule ran. Diff-scoped rules are never judged; duplicate_functions only on
+  --all.
+
+--prune-baseline removes exactly the stale entries and leaves every other entry and field untouched.
+  It is mutually exclusive with --update-baseline.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+
 ## v0.9.0 (2026-09-05)
 
 ### Bug Fixes

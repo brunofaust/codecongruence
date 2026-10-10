@@ -20,7 +20,7 @@ uv tool install prek
 ```toml
 [[repos]]
 repo = "https://github.com/brunofaust/codecongruence"
-rev = "v0.9.0"
+rev = "v0.10.0"
 hooks = [{ id = "codecongruence" }]
 ```
 
@@ -29,7 +29,7 @@ Or the wire-compatible `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/brunofaust/codecongruence
-    rev: v0.9.0
+    rev: v0.10.0
     hooks:
       - id: codecongruence
 ```
