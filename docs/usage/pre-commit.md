@@ -50,6 +50,26 @@ Key choices:
 - `require_serial: true` — the embedding model loads once per process; running
     in parallel would multiply that cost.
 
+## Use MLX in a pre-commit hook (Apple Silicon)
+
+The hook environment is built from the codecongruence repo, so request the MLX
+packages through `additional_dependencies` (PEP 508 markers keep Linux CI on
+ONNX):
+
+```yaml
+repos:
+  - repo: https://github.com/brunofaust/codecongruence
+    rev: v0.10.0
+    hooks:
+      - id: codecongruence
+        additional_dependencies:
+          - "mlx>=0.32.3; sys_platform == 'darwin' and platform_machine == 'arm64'"
+          - "mlx-embeddings>=0.1.0; sys_platform == 'darwin' and platform_machine == 'arm64'"
+```
+
+The resolved backend is printed on stderr. MLX and ONNX differ by ~1e-4 cosine;
+pin `backend = "onnx"` for byte-identical results across machines.
+
 ## Pinning + auto-update
 
 `pre-commit` caches the hook environment keyed by `rev`, so mutable refs

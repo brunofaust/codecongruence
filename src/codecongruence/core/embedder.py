@@ -19,11 +19,13 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
+from codecongruence.core.backend import ONNX, ResolvedBackend
 from codecongruence.core.config import (
     DEFAULT_CACHE_TTL_DAYS,
     DEFAULT_EMBED_BATCH_SIZE,
     DEFAULT_MODEL,
 )
+from codecongruence.core.mlx_backend import MlxEmbeddingBackend
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -38,7 +40,7 @@ log = logging.getLogger(__name__)
 
 
 class EmbeddingBackend(Protocol):
-    """Minimal protocol implemented by ``fastembed.TextEmbedding``."""
+    """Minimal protocol implemented by ``fastembed.TextEmbedding`` and the MLX backend."""
 
     def embed(
         self, documents: Sequence[str], batch_size: int = DEFAULT_EMBED_BATCH_SIZE
@@ -78,6 +80,11 @@ class Embedder:
 
     Args:
         model_name: fastembed model identifier.
+        resolved: Which engine embeds (ONNX by default, or MLX) — see
+            :func:`codecongruence.core.backend.resolve_backend`. The cache
+            is keyed by model only: ONNX and MLX vectors for the same model are
+            equivalent (see the MLX equivalence test), so either engine reuses
+            the other's cache.
         backend: Override the fastembed backend (used in tests).
         cache_dir: Directory for the per-run vector cache
             (``<cache_dir>/embeddings.npz``). Keyed by content-hash +
@@ -108,6 +115,7 @@ class Embedder:
         self,
         model_name: str = DEFAULT_MODEL,
         *,
+        resolved: ResolvedBackend = ONNX,
         backend: EmbeddingBackend | None = None,
         cache_dir: Path | None = None,
         base_cache_dir: Path | None = None,
@@ -118,6 +126,7 @@ class Embedder:
     ) -> None:
         """Initialize the embedder. See class docstring for parameter details."""
         self.model_name = model_name
+        self.resolved = resolved
         self._backend: EmbeddingBackend | None = backend
         self._embed_batch_size = embed_batch_size
         self._cache: dict[str, NDArray[np.float32]] = {}
@@ -230,7 +239,11 @@ class Embedder:
         try:
             with os.fdopen(fd, "wb") as handle:
                 np.savez_compressed(
-                    handle, model=model, hashes=hashes, matrix=matrix, last_used=last_used
+                    handle,
+                    model=model,
+                    hashes=hashes,
+                    matrix=matrix,
+                    last_used=last_used,
                 )
             os.replace(tmp, path)
         except OSError:
@@ -272,7 +285,9 @@ class Embedder:
             log.warning("could not persist embedding cache to %s", cache_dir)
 
     def _ensure_backend(self) -> EmbeddingBackend:
-        if self._backend is None:
+        if self._backend is None and self.resolved.kind == "mlx" and self.resolved.mlx_repo:
+            self._backend = MlxEmbeddingBackend(self.resolved.mlx_repo)
+        elif self._backend is None:
             # Heavy import deferred so unit tests with a fake backend never pay
             # the onnxruntime / tokenizers load cost.
             from fastembed import TextEmbedding  # noqa: PLC0415

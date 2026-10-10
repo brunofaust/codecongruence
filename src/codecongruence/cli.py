@@ -1,6 +1,7 @@
 """Typer CLI entry. Wires config → embedder → runner → reporter."""
 
 import asyncio
+import logging
 import os
 from collections.abc import Sequence
 from enum import StrEnum
@@ -10,6 +11,7 @@ from typing import Annotated
 import typer
 
 from codecongruence.core.ai_context import write_ai_context_files
+from codecongruence.core.backend import BackendUnavailableError, resolve_backend
 from codecongruence.core.baseline import (
     BaselineEntry,
     apply_baseline,
@@ -20,9 +22,11 @@ from codecongruence.core.baseline import (
     save_baseline,
 )
 from codecongruence.core.config import (
+    DEFAULT_BACKEND,
     DEFAULT_CACHE_TTL_DAYS,
     DEFAULT_EMBED_BATCH_SIZE,
     DEFAULT_MODEL,
+    BackendRequest,
     CodeCongruenceConfig,
     default_config_path,
     load_config,
@@ -43,6 +47,14 @@ class OutputFormat(StrEnum):
     json = "json"
 
 
+class BackendChoice(StrEnum):
+    """Values accepted by ``--backend``; mirrors :data:`BackendRequest`."""
+
+    auto = "auto"
+    mlx = "mlx"
+    onnx = "onnx"
+
+
 app = typer.Typer(
     name="codecongruence",
     no_args_is_help=False,
@@ -56,6 +68,10 @@ DEFAULT_TOML = f"""\
 
 [codecongruence]
 model = "{DEFAULT_MODEL}"
+# Embedding engine: "auto" uses MLX (Apple GPU) when on Apple Silicon with the
+# `mlx` extra installed, else ONNX; "mlx" requires MLX; "onnx" pins ONNX for
+# byte-identical results across machines.
+backend = "{DEFAULT_BACKEND}"
 parallel = true
 embed_batch_size = {DEFAULT_EMBED_BATCH_SIZE}
 cache_ttl_days = {DEFAULT_CACHE_TTL_DAYS}
@@ -129,7 +145,11 @@ def ensure_gitignore_entry(repo_root: Path, entry: str = ".codecongruence") -> b
     return True
 
 
-async def make_embedder(config: CodeCongruenceConfig, repo_root: Path) -> Embedder:
+async def make_embedder(
+    config: CodeCongruenceConfig,
+    repo_root: Path,
+    backend: BackendRequest | None = None,
+) -> Embedder:
     """Build the run's :class:`Embedder` with a worktree-aware vector cache.
 
     The writable vector cache lives in the current worktree
@@ -144,16 +164,19 @@ async def make_embedder(config: CodeCongruenceConfig, repo_root: Path) -> Embedd
     Args:
         config: Loaded configuration for this run.
         repo_root: Root of the current worktree.
+        backend: ``--backend`` override; ``None`` uses ``config.backend``.
 
     Returns:
         A configured :class:`Embedder` ready to embed.
     """
+    resolved = resolve_backend(backend or config.backend, config.model)
     local_cache_dir = repo_root / ".codecongruence"
     main_root = await main_worktree_root(cwd=repo_root)
     base_cache_dir = None if main_root is None else main_root / ".codecongruence"
     model_cache_dir = Path.home() / ".cache" / "codecongruence"
     return Embedder(
         model_name=config.model,
+        resolved=resolved,
         cache_dir=local_cache_dir,
         base_cache_dir=base_cache_dir,
         model_cache_dir=model_cache_dir,
@@ -265,6 +288,16 @@ def main(
             ),
         ),
     ] = False,
+    backend: Annotated[
+        BackendChoice | None,
+        typer.Option(
+            "--backend",
+            help=(
+                "Embedding engine, overriding the config: auto (MLX on Apple Silicon "
+                "when installed, else ONNX), mlx (error if unavailable) or onnx."
+            ),
+        ),
+    ] = None,
     debug: Annotated[
         bool,
         typer.Option(
@@ -310,6 +343,7 @@ def main(
             include_unstaged=include_unstaged,
             update_baseline=update_baseline,
             prune_stale=prune_baseline_flag,
+            backend=backend.value if backend else None,
             debug=debug,
         )
     )
@@ -391,6 +425,9 @@ async def init_setup(*, no_embed: bool) -> None:
     Args:
         no_embed: When ``True``, skip the initial full-repo embedding pass and
             only ensure the model is downloaded and ready.
+
+    Raises:
+        Exit: With code ``2`` when the configured backend is unavailable.
     """
     from rich.console import Console  # noqa: PLC0415
     from rich.progress import (  # noqa: PLC0415
@@ -405,7 +442,11 @@ async def init_setup(*, no_embed: bool) -> None:
 
     repo_root = await current_repo_root()
     config = load_config(repo_root=repo_root)
-    embedder = await make_embedder(config, repo_root)
+    try:
+        embedder = await make_embedder(config, repo_root)
+    except BackendUnavailableError as exc:
+        typer.echo(f"codecongruence: {exc}", err=True)
+        raise typer.Exit(2) from exc
 
     # Model download may emit fastembed / huggingface_hub tqdm output to stderr.
     # Print a plain line before so it doesn't interleave with any live display.
@@ -458,6 +499,15 @@ def report_stale(stale: Sequence[BaselineEntry]) -> None:
         )
 
 
+def enable_debug_logging() -> None:
+    """Route ``codecongruence`` debug records to stderr for ``--debug``."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(name)s  %(message)s"))
+    logger = logging.getLogger("codecongruence")
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+
+
 async def run(
     *,
     rule: str | None,
@@ -468,6 +518,7 @@ async def run(
     include_unstaged: bool,
     update_baseline: bool = False,
     prune_stale: bool = False,
+    backend: BackendRequest | None = None,
     debug: bool = False,
 ) -> int:
     """Run the selected rules over the changed files and report violations.
@@ -481,11 +532,12 @@ async def run(
         include_unstaged: Also check unstaged working-tree changes.
         update_baseline: Save all current violations as the new baseline, then exit.
         prune_stale: Drop stale baseline entries (resolved violations) from the baseline file.
+        backend: ``--backend`` override of the configured embedding engine.
         debug: Emit per-rule debug logging to stderr.
 
     Returns:
-        Process exit code — ``0`` when clean, and non-zero when violations are
-        found or the rule selection is invalid.
+        Process exit code — ``0`` when clean, ``1`` when violations are found,
+        and ``2`` when the rule selection or an explicit backend is invalid.
     """
     if update_baseline and prune_stale:
         typer.echo(
@@ -495,20 +547,19 @@ async def run(
         return 2
 
     if debug:
-        import logging  # noqa: PLC0415
-
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter("%(name)s  %(message)s"))
-        logger = logging.getLogger("codecongruence")
-        logger.setLevel(logging.DEBUG)
-        logger.addHandler(handler)
+        enable_debug_logging()
 
     repo_root = await current_repo_root()
     config = load_config(path=config_path, repo_root=repo_root)
     # Rules read changed-file paths relative to the repo root, so anchor the
     # process there — otherwise running from a subdirectory checks nothing.
     os.chdir(repo_root)
-    embedder = await make_embedder(config, repo_root)
+    try:
+        embedder = await make_embedder(config, repo_root, backend)
+    except BackendUnavailableError as exc:
+        typer.echo(f"codecongruence: {exc}", err=True)
+        return 2
+    typer.echo(f"codecongruence: embedding backend: {embedder.resolved.describe()}", err=True)
     runner = RuleRunner(config, embedder)
     try:
         runner.select_rules(rule)
@@ -562,7 +613,7 @@ async def run(
         stale = ()
 
     if output_format is OutputFormat.json:
-        JsonReporter().report(result, stale_baseline=stale)
+        JsonReporter().report(result, stale_baseline=stale, backend=embedder.resolved)
     else:
         TextReporter(verbose=verbose).report(result)
         if suppressed > 0:

@@ -7,7 +7,9 @@ This file tells Claude Code how to work in this repo. Keep it short; link out fo
 `codecongruence` is a semantic pre-commit hook framework. It detects drift
 between code and surrounding artifacts (docstrings, comments, function names,
 CLAUDE.md, PR descriptions, CHANGELOG) using **local** sentence embeddings via
-`fastembed` (ONNX, no PyTorch, no API calls).
+`fastembed` (ONNX, no PyTorch, no API calls), or MLX on Apple Silicon via the optional
+`mlx` extra (`core/backend.py` resolves `auto|mlx|onnx`; add a model to `MLX_MODEL_MAP`
+to give it an MLX mapping).
 
 ## Conventions
 

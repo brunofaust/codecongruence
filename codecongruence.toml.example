@@ -34,6 +34,19 @@
 #
 model = "BAAI/bge-small-en-v1.5"
 
+# Embedding engine.
+#   "auto"  MLX (Apple GPU) when on macOS arm64 with the `mlx` extra installed
+#           (pip install 'codecongruence[mlx]') AND the model has an MLX mapping;
+#           otherwise ONNX (fastembed).  The resolved engine is printed once per
+#           run.  (default)
+#   "mlx"   Require MLX; exit 2 if it is unavailable (never falls back).
+#   "onnx"  Always ONNX.  Pin this for byte-identical results across machines:
+#           MLX and ONNX vectors differ by ~1e-4 cosine, so a finding sitting
+#           exactly on a threshold can flip between a Mac and Linux CI.
+# The --backend CLI flag overrides this setting.
+#
+backend = "auto"
+
 # Run all rules concurrently via asyncio.TaskGroup.
 # Set to false to run them one at a time — useful for debugging a specific rule.
 #
