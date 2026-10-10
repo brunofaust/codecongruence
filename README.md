@@ -97,6 +97,7 @@ codecongruence --verbose                # show violation table and OK line on su
 
 # --- baseline ---
 codecongruence --update-baseline        # save all current violations as the new baseline
+codecongruence --prune-baseline         # drop baseline entries whose violation is gone
 
 # --- setup ---
 codecongruence init                     # write codecongruence.toml + AI context files
@@ -128,9 +129,22 @@ git add .codecongruence/.codecongruence-baseline.json
 git commit -m "chore: shrink codecongruence baseline"
 ```
 
-The baseline file stores violations by `(rule_id, file_path, line)`. Moving a
-function to a different line makes the entry stale — it falls off automatically
-on the next `--update-baseline`.
+The baseline file stores violations by `(rule_id, file_path, line)`. Fixing a
+violation or moving a function to a different line makes its entry *stale*. A
+stale entry could later silently absorb a new finding on the same key, so every
+run reports stale entries and exits non-zero. Remove them with:
+
+```bash
+codecongruence --prune-baseline         # removes only stale entries, never adds
+```
+
+An entry is judged stale only when the run could have re-found it: its file was
+checked, its line is inside the checked diff ranges (or the run was `--all`), and
+its rule ran. Hook runs over a few staged files therefore never flag entries for
+other files; run `codecongruence --all` to judge the whole baseline. Diff-scoped
+rules (`claude_md_vs_diff`, `pr_description_vs_diff`, `docs_on_change`) are never
+judged, and `duplicate_functions` only on `--all`. `--prune-baseline` cannot be
+combined with `--update-baseline`.
 
 ## Configuration
 

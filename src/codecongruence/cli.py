@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -9,7 +10,15 @@ from typing import Annotated
 import typer
 
 from codecongruence.core.ai_context import write_ai_context_files
-from codecongruence.core.baseline import apply_baseline, baseline_path, load_baseline, save_baseline
+from codecongruence.core.baseline import (
+    BaselineEntry,
+    apply_baseline,
+    baseline_path,
+    find_stale,
+    load_baseline,
+    prune_baseline,
+    save_baseline,
+)
 from codecongruence.core.config import (
     DEFAULT_CACHE_TTL_DAYS,
     DEFAULT_EMBED_BATCH_SIZE,
@@ -244,6 +253,18 @@ def main(
             ),
         ),
     ] = False,
+    prune_baseline_flag: Annotated[
+        bool,
+        typer.Option(
+            "--prune-baseline",
+            help=(
+                "Remove baseline entries whose violation no longer exists (only entries "
+                "for files checked and rules run in this invocation). Never adds entries. "
+                "Exits non-zero only if unsuppressed violations remain. "
+                "Mutually exclusive with --update-baseline."
+            ),
+        ),
+    ] = False,
     debug: Annotated[
         bool,
         typer.Option(
@@ -288,6 +309,7 @@ def main(
             verbose=verbose,
             include_unstaged=include_unstaged,
             update_baseline=update_baseline,
+            prune_stale=prune_baseline_flag,
             debug=debug,
         )
     )
@@ -416,6 +438,26 @@ async def init_setup(*, no_embed: bool) -> None:
     console.print(f"[green]✓[/green] cached {embedder.cache_size} embedding(s) ({added} new)")
 
 
+def report_stale(stale: Sequence[BaselineEntry]) -> None:
+    """Print each stale baseline entry plus the prune hint to stderr.
+
+    Args:
+        stale: Entries returned by :func:`find_stale`; prints nothing when empty.
+    """
+    for entry in stale:
+        suffix = f" - {entry.message}" if entry.message else ""
+        typer.echo(
+            f"stale baseline entry: {entry.rule_id} {entry.file_path}:{entry.line}{suffix}",
+            err=True,
+        )
+    if stale:
+        typer.echo(
+            f"codecongruence: {len(stale)} stale baseline entr{'y' if len(stale) == 1 else 'ies'} "
+            "(violation resolved); run --prune-baseline to remove resolved entries",
+            err=True,
+        )
+
+
 async def run(
     *,
     rule: str | None,
@@ -425,6 +467,7 @@ async def run(
     verbose: bool,
     include_unstaged: bool,
     update_baseline: bool = False,
+    prune_stale: bool = False,
     debug: bool = False,
 ) -> int:
     """Run the selected rules over the changed files and report violations.
@@ -437,12 +480,20 @@ async def run(
         verbose: Print an OK line and the violation table on success.
         include_unstaged: Also check unstaged working-tree changes.
         update_baseline: Save all current violations as the new baseline, then exit.
+        prune_stale: Drop stale baseline entries (resolved violations) from the baseline file.
         debug: Emit per-rule debug logging to stderr.
 
     Returns:
         Process exit code — ``0`` when clean, and non-zero when violations are
         found or the rule selection is invalid.
     """
+    if update_baseline and prune_stale:
+        typer.echo(
+            "codecongruence: --update-baseline and --prune-baseline are mutually exclusive",
+            err=True,
+        )
+        return 2
+
     if debug:
         import logging  # noqa: PLC0415
 
@@ -498,11 +549,20 @@ async def run(
 
     bl = load_baseline(baseline_path(repo_root))
     suppressed = 0
+    stale: tuple[BaselineEntry, ...] = ()
     if bl is not None:
+        stale = find_stale(bl, result, full_scan=all_files)
         result, suppressed = apply_baseline(result, bl)
+    if prune_stale and stale:
+        removed = prune_baseline(baseline_path(repo_root), stale)
+        typer.echo(
+            f"codecongruence: pruned {removed} stale baseline entr{'y' if removed == 1 else 'ies'}",
+            err=True,
+        )
+        stale = ()
 
     if output_format is OutputFormat.json:
-        JsonReporter().report(result)
+        JsonReporter().report(result, stale_baseline=stale)
     else:
         TextReporter(verbose=verbose).report(result)
         if suppressed > 0:
@@ -512,8 +572,9 @@ async def run(
                 f"[dim]{suppressed} violation(s) suppressed by baseline "
                 "(run --update-baseline to reset)[/dim]"
             )
+        report_stale(stale)
 
-    return 0 if result.ok else 1
+    return 0 if result.ok and not stale else 1
 
 
 if __name__ == "__main__":  # pragma: no cover
