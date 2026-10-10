@@ -78,11 +78,16 @@ def _apply_function_excludes(
 
 @dataclass(frozen=True, slots=True)
 class RunResult:
-    """Aggregated outcome of a single run."""
+    """Aggregated outcome of a single run.
+
+    ``rule_scopes`` pairs each rule id with the exact (exclude-filtered) files it
+    received, so consumers can tell what a rule could and could not have seen.
+    """
 
     violations: tuple[RuleViolation, ...]
     files_checked: tuple[Path, ...]
     rules_run: tuple[str, ...]
+    rule_scopes: tuple[tuple[str, tuple[ChangedFile, ...]], ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -258,6 +263,7 @@ class RuleRunner:
             violations=tuple(flat),
             files_checked=tuple(c.path for c in changed),
             rules_run=tuple(r.rule_id for r in selected),
+            rule_scopes=tuple((rule.rule_id, tuple(files)) for rule, files, _ in prepared),
         )
 
 

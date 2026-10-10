@@ -551,7 +551,7 @@ async def run(
     suppressed = 0
     stale: tuple[BaselineEntry, ...] = ()
     if bl is not None:
-        stale = find_stale(bl, result, changed, full_scan=all_files)
+        stale = find_stale(bl, result, full_scan=all_files)
         result, suppressed = apply_baseline(result, bl)
     if prune_stale and stale:
         removed = prune_baseline(baseline_path(repo_root), stale)

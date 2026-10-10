@@ -19,12 +19,12 @@ entry could later absorb a new finding that lands on the same key, so every run
 reports stale entries and exits non-zero; ``--prune-baseline`` removes exactly
 those entries and nothing else.
 
-An entry is judged only when the rules could have re-found it: its file is in the
-run's checked set (the ``ChangedFile`` list the runner fed the rules), its line
-lies in that file's added line ranges (rules skip untouched code in diff mode;
-an empty range list means the whole file was scanned), and its rule actually ran
-(``RunResult.rules_run``).  File-scoped hook runs therefore never judge entries
-for files or lines they did not look at.
+An entry is judged only when the rules could have re-found it: its file is in
+the rule's own input (``RunResult.rule_scopes``: the checked files after that
+rule's ``exclude``), its line lies in that file's added line ranges (rules skip
+untouched code in diff mode; an empty range list means the whole file was
+scanned) and outside functions removed by ``exclude_functions``.  File-scoped hook
+runs therefore never judge entries for files or lines the rule did not see.
 Rules whose findings are not a function of one file are judged conservatively:
 diff-scoped rules (``claude_md_vs_diff``, ``pr_description_vs_diff``,
 ``docs_on_change``) never, and the pairwise ``duplicate_functions`` only on a
@@ -181,34 +181,35 @@ def apply_baseline(result: RunResult, baseline: Baseline) -> tuple[RunResult, in
     return dataclasses.replace(result, violations=new_violations), suppressed
 
 
-def _in_ranges(cf: ChangedFile, line: int | None) -> bool:
-    return line is not None and cf.covers(line)
+def _re_findable(cf: ChangedFile, line: int | None) -> bool:
+    """Say whether a rule given *cf* could have reported a violation at *line*.
+
+    Returns:
+        ``False`` inside an excluded function or outside the added ranges.
+    """
+    if line is not None and any(lo <= line <= hi for lo, hi in cf.excluded_fn_ranges):
+        return False
+    return not cf.added_ranges or (line is not None and cf.covers(line))
 
 
 def find_stale(
-    baseline: Baseline,
-    result: RunResult,
-    changed: Sequence[ChangedFile],
-    *,
-    full_scan: bool,
+    baseline: Baseline, result: RunResult, *, full_scan: bool
 ) -> tuple[BaselineEntry, ...]:
     """Return baseline entries whose violation no longer exists.
 
-    An entry is stale iff it is in scope (see the module docstring: file in
-    *changed*, line inside the file's added ranges or the file fully scanned, rule
-    in ``result.rules_run``) and no violation in ``result`` has the same key.
+    An entry is stale iff it is in scope (see the module docstring: judged against
+    the per-rule input in ``result.rule_scopes``) and no violation in ``result`` has the same key.
     Call this on the *unfiltered* result.
 
     Args:
         baseline: The loaded baseline.
         result: The raw run result, before :func:`apply_baseline`.
-        changed: The exact file list passed to the runner for this run.
         full_scan: ``True`` when every tracked file was checked (``--all``).
 
     Returns:
         Stale entries sorted by file, line and rule.
     """
-    scope = {str(cf.path): cf for cf in changed}
+    scopes = {rule_id: {str(cf.path): cf for cf in files} for rule_id, files in result.rule_scopes}
     ran = set(result.rules_run) - _DIFF_SCOPED_RULES
     if not full_scan:
         ran -= _PAIRWISE_RULES
@@ -217,8 +218,8 @@ def find_stale(
         e
         for e in baseline.entries
         if e.rule_id in ran
-        and e.file_path in scope
-        and (not scope[e.file_path].added_ranges or _in_ranges(scope[e.file_path], e.line))
+        and (cf := scopes.get(e.rule_id, {}).get(e.file_path)) is not None
+        and _re_findable(cf, e.line)
         and (e.rule_id, e.file_path, e.line) not in live
     ]
     return tuple(sorted(stale, key=lambda e: (e.file_path, e.line or 0, e.rule_id)))
@@ -237,7 +238,7 @@ def prune_baseline(path: Path, stale: Sequence[BaselineEntry]) -> int:
         The number of entries removed.
     """
     drop = {(e.rule_id, e.file_path, e.line) for e in stale}
-    data = json.loads(path.read_text(encoding="utf-8"))  # guard:allow
+    data = json.loads(path.read_text(encoding="utf-8"))
     kept = [
         v
         for v in data["violations"]
@@ -246,7 +247,7 @@ def prune_baseline(path: Path, stale: Sequence[BaselineEntry]) -> int:
     removed = len(data["violations"]) - len(kept)
     if removed:
         data["violations"] = kept
-        text = json.dumps(data, indent=2, sort_keys=True)  # guard:allow
+        text = json.dumps(data, indent=2, sort_keys=True)
         path.write_text(text + "\n", encoding="utf-8")
     return removed
 

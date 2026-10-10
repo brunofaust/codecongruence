@@ -377,3 +377,111 @@ def test_update_and_prune_baseline_are_mutually_exclusive(
     result = _invoke(runner, baselined_repo, "--update-baseline", "--prune-baseline")
 
     assert result.exit_code == 2
+
+
+def _add_entries(repo: Path, *entries: dict[str, object]) -> None:
+    path = repo / _BASELINE_REL
+    data = json.loads(path.read_text())
+    data["violations"].extend(entries)
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+
+
+def test_line_none_entry_is_judged_on_all_scan(baselined_repo: Path, runner: CliRunner) -> None:
+    _add_entries(
+        baselined_repo,
+        {
+            "rule_id": "params_in_docstring",
+            "code": "D006",
+            "file_path": "src/other.py",
+            "line": None,
+        },
+    )
+
+    result = _invoke(runner, baselined_repo, "--all")
+
+    assert result.exit_code == 1
+    assert "src/other.py:None" in result.output
+
+
+def test_prune_in_diff_mode_keeps_out_of_range_entries(
+    baselined_repo: Path, runner: CliRunner
+) -> None:
+    stale_in_range = {
+        "rule_id": "params_in_docstring",
+        "code": "D006",
+        "file_path": "src/first.py",
+        "line": 1,
+    }
+    out_of_range = {**stale_in_range, "line": 40}
+    _add_entries(baselined_repo, out_of_range)
+    _fix_first(baselined_repo)
+
+    diff_run = _invoke(runner, baselined_repo, "--prune-baseline")
+    left = json.loads((baselined_repo / _BASELINE_REL).read_text())["violations"]
+    assert diff_run.exit_code == 0
+    assert [v["line"] for v in left] == [40]
+
+    all_run = _invoke(runner, baselined_repo, "--all", "--prune-baseline")
+    left = json.loads((baselined_repo / _BASELINE_REL).read_text())["violations"]
+    assert all_run.exit_code == 0
+    assert left == []
+
+
+def test_file_exclude_entry_is_not_stale_and_survives_prune(
+    baselined_repo: Path, runner: CliRunner
+) -> None:
+    config = baselined_repo / "codecongruence.toml"
+    config.write_text(
+        config.read_text().replace(
+            "[rules.params_in_docstring]\nenabled = true",
+            '[rules.params_in_docstring]\nenabled = true\nexclude = ["src/first.py"]',
+        )
+    )
+    _fix_first(baselined_repo)
+
+    run = _invoke(runner, baselined_repo)
+    prune = _invoke(runner, baselined_repo, "--prune-baseline")
+
+    assert run.exit_code == 0
+    assert "stale" not in run.output.lower()
+    assert prune.exit_code == 0
+    assert len(json.loads((baselined_repo / _BASELINE_REL).read_text())["violations"]) == 1
+
+
+def test_exclude_functions_entry_is_not_stale(baselined_repo: Path, runner: CliRunner) -> None:
+    config = baselined_repo / "codecongruence.toml"
+    config.write_text(
+        config.read_text().replace(
+            "[rules.params_in_docstring]\nenabled = true",
+            '[rules.params_in_docstring]\nenabled = true\nexclude_functions = ["run"]',
+        )
+    )
+    _fix_first(baselined_repo)
+
+    run = _invoke(runner, baselined_repo)
+
+    assert run.exit_code == 0
+    assert "stale" not in run.output.lower()
+
+
+def test_missing_baseline_leaves_exit_logic_unchanged(
+    baselined_repo: Path, runner: CliRunner
+) -> None:
+    (baselined_repo / _BASELINE_REL).unlink()
+    (baselined_repo / "src" / "other.py").write_text('def go(a):\n    """Go."""\n    pass\n')
+    _git(baselined_repo, "add", "src/other.py")
+
+    assert _invoke(runner, baselined_repo).exit_code == 1
+    assert _invoke(runner, baselined_repo, "--prune-baseline").exit_code == 1
+
+
+def test_corrupt_baseline_leaves_exit_logic_unchanged(
+    baselined_repo: Path, runner: CliRunner
+) -> None:
+    (baselined_repo / _BASELINE_REL).write_text("{not json")
+    (baselined_repo / "src" / "other.py").write_text('def go(a):\n    """Go."""\n    pass\n')
+    _git(baselined_repo, "add", "src/other.py")
+
+    assert _invoke(runner, baselined_repo).exit_code == 1
+    assert _invoke(runner, baselined_repo, "--prune-baseline").exit_code == 1
+    assert (baselined_repo / _BASELINE_REL).read_text() == "{not json"
