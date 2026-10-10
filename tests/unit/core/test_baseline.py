@@ -10,9 +10,12 @@ from codecongruence.core.baseline import (
     BaselineEntry,
     apply_baseline,
     baseline_path,
+    find_stale,
     load_baseline,
+    prune_baseline,
     save_baseline,
 )
+from codecongruence.core.git import ChangedFile
 from codecongruence.core.runner import RunResult
 from codecongruence.rules.base import RuleViolation
 
@@ -204,3 +207,68 @@ def test_apply_baseline_returns_suppressed_count() -> None:
 def test_baseline_path_is_in_codecongruence_dir(tmp_path: Path) -> None:
     p = baseline_path(tmp_path)
     assert p == tmp_path / ".codecongruence" / ".codecongruence-baseline.json"
+
+
+# ── find_stale / prune_baseline ──────────────────────────────────────────────
+
+
+def _entry(
+    rule_id: str = "name_vs_body", file_path: str = "src/foo.py", line: int | None = 10
+) -> BaselineEntry:
+    return BaselineEntry(rule_id=rule_id, file_path=file_path, line=line)
+
+
+def _cf(path: str = "src/foo.py", ranges: tuple[tuple[int, int], ...] = ()) -> ChangedFile:
+    return ChangedFile(path=Path(path), added_ranges=ranges)
+
+
+def _run(*violations: RuleViolation, rules: tuple[str, ...] = ("name_vs_body",)) -> RunResult:
+    return RunResult(violations=violations, files_checked=(), rules_run=rules)
+
+
+def test_find_stale_flags_unmatched_entry_in_checked_file() -> None:
+    bl = Baseline(entries=frozenset({_entry()}))
+    assert find_stale(bl, _run(), [_cf()], full_scan=False) == (_entry(),)
+
+
+def test_find_stale_ignores_matched_entry() -> None:
+    bl = Baseline(entries=frozenset({_entry()}))
+    assert find_stale(bl, _run(_violation()), [_cf()], full_scan=False) == ()
+
+
+def test_find_stale_ignores_unchecked_file_and_rule_that_did_not_run() -> None:
+    bl = Baseline(entries=frozenset({_entry(), _entry(rule_id="stale_comments")}))
+    assert find_stale(bl, _run(), [_cf("src/other.py")], full_scan=False) == ()
+    assert find_stale(bl, _run(), [_cf()], full_scan=False) == (_entry(),)
+
+
+def test_find_stale_only_judges_lines_inside_added_ranges() -> None:
+    bl = Baseline(entries=frozenset({_entry(line=10), _entry(line=None)}))
+    assert find_stale(bl, _run(), [_cf(ranges=((1, 5),))], full_scan=False) == ()
+    assert find_stale(bl, _run(), [_cf(ranges=((8, 12),))], full_scan=False) == (_entry(line=10),)
+
+
+def test_find_stale_scopes_diff_scoped_and_pairwise_rules() -> None:
+    entries = [_entry(rule_id=r) for r in ("docs_on_change", "duplicate_functions")]
+    bl = Baseline(entries=frozenset(entries))
+    rules = ("docs_on_change", "duplicate_functions")
+    assert find_stale(bl, _run(rules=rules), [_cf()], full_scan=False) == ()
+    assert find_stale(bl, _run(rules=rules), [_cf()], full_scan=True) == (
+        _entry(rule_id="duplicate_functions"),
+    )
+
+
+def test_prune_baseline_removes_only_stale_and_keeps_other_fields(tmp_path: Path) -> None:
+    keep = {"rule_id": "a", "code": "C1", "file_path": "k.py", "line": 3, "message": "m"}
+    drop = {"rule_id": "b", "code": "C2", "file_path": "d.py", "line": None, "message": "x"}
+    path = tmp_path / "bl.json"
+    path.write_text(
+        json.dumps({"generated_at": "t", "version": 1, "violations": [keep, drop]}, indent=2)
+    )
+
+    removed = prune_baseline(path, [_entry("b", "d.py", None)])
+
+    assert removed == 1
+    data = json.loads(path.read_text())
+    assert data == {"generated_at": "t", "version": 1, "violations": [keep]}
+    assert prune_baseline(path, [_entry("b", "d.py", None)]) == 0

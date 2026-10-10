@@ -14,15 +14,28 @@ Usage:
    a non-zero exit.
 
 Matching is exact on ``(rule_id, file_path, line)``.  Moving a function to a
-different line makes the old entry stale — it falls off the baseline on the next
-``--update-baseline``.
+different line, or fixing the violation, makes the old entry *stale*.  A stale
+entry could later absorb a new finding that lands on the same key, so every run
+reports stale entries and exits non-zero; ``--prune-baseline`` removes exactly
+those entries and nothing else.
+
+An entry is judged only when the rules could have re-found it: its file is in the
+run's checked set (the ``ChangedFile`` list the runner fed the rules), its line
+lies in that file's added line ranges (rules skip untouched code in diff mode;
+an empty range list means the whole file was scanned), and its rule actually ran
+(``RunResult.rules_run``).  File-scoped hook runs therefore never judge entries
+for files or lines they did not look at.
+Rules whose findings are not a function of one file are judged conservatively:
+diff-scoped rules (``claude_md_vs_diff``, ``pr_description_vs_diff``,
+``docs_on_change``) never, and the pairwise ``duplicate_functions`` only on a
+full ``--all`` scan.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -30,6 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from codecongruence.core.git import ChangedFile
     from codecongruence.core.runner import RunResult
     from codecongruence.rules.base import RuleViolation
 
@@ -38,12 +52,18 @@ __all__ = [
     "BaselineEntry",
     "apply_baseline",
     "baseline_path",
+    "find_stale",
     "load_baseline",
+    "prune_baseline",
     "save_baseline",
 ]
 
 _BASELINE_FILENAME = ".codecongruence-baseline.json"
 _FORMAT_VERSION = 1
+# Findings that depend on the staged diff / PR body, not on the file's content.
+_DIFF_SCOPED_RULES = frozenset({"claude_md_vs_diff", "pr_description_vs_diff", "docs_on_change"})
+# Findings that pair two files; complete only when every tracked file was checked.
+_PAIRWISE_RULES = frozenset({"duplicate_functions"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +73,7 @@ class BaselineEntry:
     rule_id: str
     file_path: str
     line: int | None
+    message: str | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +127,7 @@ def load_baseline(path: Path) -> Baseline | None:
                 rule_id=str(e["rule_id"]),
                 file_path=str(e["file_path"]),
                 line=int(e["line"]) if e.get("line") is not None else None,
+                message=str(e["message"]) if e.get("message") is not None else None,
             )
             for e in violations
         )
@@ -157,6 +179,76 @@ def apply_baseline(result: RunResult, baseline: Baseline) -> tuple[RunResult, in
     new_violations = tuple(v for v in result.violations if not baseline.is_suppressed(v))
     suppressed = len(result.violations) - len(new_violations)
     return dataclasses.replace(result, violations=new_violations), suppressed
+
+
+def _in_ranges(cf: ChangedFile, line: int | None) -> bool:
+    return line is not None and cf.covers(line)
+
+
+def find_stale(
+    baseline: Baseline,
+    result: RunResult,
+    changed: Sequence[ChangedFile],
+    *,
+    full_scan: bool,
+) -> tuple[BaselineEntry, ...]:
+    """Return baseline entries whose violation no longer exists.
+
+    An entry is stale iff it is in scope (see the module docstring: file in
+    *changed*, line inside the file's added ranges or the file fully scanned, rule
+    in ``result.rules_run``) and no violation in ``result`` has the same key.
+    Call this on the *unfiltered* result.
+
+    Args:
+        baseline: The loaded baseline.
+        result: The raw run result, before :func:`apply_baseline`.
+        changed: The exact file list passed to the runner for this run.
+        full_scan: ``True`` when every tracked file was checked (``--all``).
+
+    Returns:
+        Stale entries sorted by file, line and rule.
+    """
+    scope = {str(cf.path): cf for cf in changed}
+    ran = set(result.rules_run) - _DIFF_SCOPED_RULES
+    if not full_scan:
+        ran -= _PAIRWISE_RULES
+    live = {(v.rule_id, v.file_path, v.line) for v in result.violations}
+    stale = [
+        e
+        for e in baseline.entries
+        if e.rule_id in ran
+        and e.file_path in scope
+        and (not scope[e.file_path].added_ranges or _in_ranges(scope[e.file_path], e.line))
+        and (e.rule_id, e.file_path, e.line) not in live
+    ]
+    return tuple(sorted(stale, key=lambda e: (e.file_path, e.line or 0, e.rule_id)))
+
+
+def prune_baseline(path: Path, stale: Sequence[BaselineEntry]) -> int:
+    """Remove exactly the *stale* entries from the baseline file at *path*.
+
+    Remaining entries and top-level fields are written back unchanged.
+
+    Args:
+        path: The baseline JSON file.
+        stale: Entries to drop, as returned by :func:`find_stale`.
+
+    Returns:
+        The number of entries removed.
+    """
+    drop = {(e.rule_id, e.file_path, e.line) for e in stale}
+    data = json.loads(path.read_text(encoding="utf-8"))  # guard:allow
+    kept = [
+        v
+        for v in data["violations"]
+        if (str(v["rule_id"]), str(v["file_path"]), v.get("line")) not in drop
+    ]
+    removed = len(data["violations"]) - len(kept)
+    if removed:
+        data["violations"] = kept
+        text = json.dumps(data, indent=2, sort_keys=True)  # guard:allow
+        path.write_text(text + "\n", encoding="utf-8")
+    return removed
 
 
 def baseline_path(repo_root: Path) -> Path:
