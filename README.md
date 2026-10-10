@@ -1,12 +1,13 @@
 # codecongruence
 
-Semantic pre-commit hook framework. Detects drift between code and surrounding artifacts (docstrings, comments, function names, CLAUDE.md, PR descriptions, CHANGELOG) using local sentence embeddings via `fastembed`.
+Semantic pre-commit hook framework. Detects drift between code and surrounding artifacts (docstrings, comments, function names, CLAUDE.md, PR descriptions, CHANGELOG) using local sentence embeddings via `fastembed` (ONNX) or, optionally, MLX on Apple Silicon.
 
 ## Features
 
 - **9 drift detection rules** — function names vs implementation, duplicate logic, docstrings vs behavior, stale comments, missing docs, PR description alignment
 - **Zero external dependencies** — ONNX-based `fastembed` (no PyTorch, no API calls)
 - **Offline embeddings** — sentence embeddings run locally on your machine
+- **Optional Apple GPU backend** — `codecongruence[mlx]` embeds with MLX on Apple Silicon, auto-selected when installed
 - **Embedding cache** — persistent per-model cache with TTL-based garbage collection
 - **Configurable thresholds** — tune similarity tolerances per rule
 - **JSON output** — machine-readable violation reports
@@ -26,6 +27,28 @@ uv tool install "git+https://github.com/brunofaust/codecongruence.git@vX.Y.Z"
 This puts the `codecongruence` command on your `PATH`. Upgrade later with
 `uv tool upgrade codecongruence`. Browse [releases](https://github.com/brunofaust/codecongruence/releases)
 for the tag to pin.
+
+### Optional: MLX backend (Apple Silicon)
+
+On a Mac with an M-series chip, embeddings can run on the GPU through
+[MLX](https://github.com/ml-explore/mlx). Install the `mlx` extra:
+
+```bash
+pip install 'codecongruence[mlx]'
+# or
+uv tool install 'git+https://github.com/brunofaust/codecongruence.git[mlx]'
+```
+
+Nothing else changes: with `backend = "auto"` (the default) codecongruence uses
+MLX when it is on macOS arm64, `mlx` and `mlx-embeddings` import, and the
+configured model has an MLX mapping (today `BAAI/bge-small-en-v1.5` →
+`mlx-community/bge-small-en-v1.5-bf16`). Otherwise it uses ONNX and says why. The
+resolved backend is printed once per run on stderr and recorded in the `--format json` output.
+
+> **Cross-platform determinism.** MLX (Mac) and ONNX (Linux CI) vectors agree to
+> about 1e-4 cosine, so a finding that sits exactly on a threshold can flip
+> between the two. If your team runs the hook on Macs and CI on Linux, pin
+> `backend = "onnx"` for byte-identical results everywhere.
 
 > **Default mode checks only staged files.** If nothing is staged (`git add`),
 > the tool prints a warning and exits cleanly — it does not scan the whole repo.
@@ -152,6 +175,7 @@ Create `codecongruence.toml` at your repo root:
 
 ```toml
 model = "BAAI/bge-small-en-v1.5"
+backend = "auto"          # "auto" | "mlx" | "onnx"
 embed_batch_size = 16
 cache_ttl_days = 30
 
@@ -162,6 +186,12 @@ threshold = 0.65
 threshold = 0.70
 ```
 
+`backend` picks the embedding engine. `auto` (default) prefers MLX when it
+is usable and falls back to ONNX with a printed reason; `mlx` requires MLX and
+exits `2` if it cannot run (unsupported machine, extra not installed, or a
+model without an MLX mapping) rather than silently falling back; `onnx` always
+uses fastembed. `--backend` on the command line overrides the config.
+
 `embed_batch_size` caps how many texts go into a single ONNX inference call
 (default: 16). Peak process memory scales with the largest single batch —
 fastembed's own default of 256 peaks at ~5.7 GB on realistic code, while 16
@@ -170,7 +200,7 @@ memory-constrained CI; raise it only if you have memory to spare.
 
 ## Cache Garbage Collection
 
-Embeddings are cached in `.codecongruence/embeddings.npz` (model-specific, content-hash keyed).
+Embeddings are cached in `.codecongruence/embeddings.npz` (model- and backend-specific, content-hash keyed). A cache written by a different backend is ignored, so ONNX and MLX vectors are never mixed; the first run after switching backend re-embeds.
 
 Two GC mechanisms:
 
@@ -237,7 +267,7 @@ codecongruence (CLI)
    load_config (codecongruence.toml)
         │
         ▼
-   Embedder (fastembed/ONNX, single load, content-hash cached)
+   Embedder (ONNX or MLX backend, single load, content-hash cached)
         │
         ▼
    RuleRunner.run() ─── asyncio.TaskGroup ───► [Rule.check(...) × N]

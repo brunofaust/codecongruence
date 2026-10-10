@@ -43,6 +43,30 @@ repos:
 > prek auto-update    # bumps rev to the latest released tag
 > ```
 
+## Use MLX in a prek hook (Apple Silicon)
+
+prek builds the hook environment from the codecongruence repo, so the `mlx`
+extra cannot be requested with `pip install 'codecongruence[mlx]'` — request
+the packages through `additional_dependencies`. PEP 508 markers are honoured, so
+the same config is a no-op on Linux CI (which stays on ONNX):
+
+```toml
+[[repos]]
+repo = "https://github.com/brunofaust/codecongruence"
+rev = "v0.10.0"
+hooks = [
+  { id = "codecongruence", additional_dependencies = [
+    "mlx>=0.32.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-embeddings>=0.1.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  ] },
+]
+```
+
+The hook prints `codecongruence: embedding backend: mlx` (or `onnx (auto: …)` with the
+reason) on stderr; run `prek run codecongruence --all-files -v` to see it on a
+passing run. Because MLX and ONNX differ by ~1e-4 cosine, pin `backend = "onnx"`
+in `codecongruence.toml` if findings must be identical on every machine.
+
 ## 3. Install the git hook
 
 ```bash

@@ -28,7 +28,7 @@
            ▼                                ▼
 ┌─────────────────────────┐    ┌────────────────────────────┐
 │ Embedder (single load,  │    │ Rules (9×)                 │
-│ ONNX, content-cached)   │    │  name_vs_body        C001  │
+│ ONNX/MLX, cached)       │    │  name_vs_body        C001  │
 │       core/embedder.py  │    │  param_name_vs_usage C002  │
 └─────────────────────────┘    │  duplicate_functions C003  │
                                │  docstring_vs_body   D001  │
@@ -56,6 +56,15 @@
 - Backend protocol (`EmbeddingBackend`) so tests inject a deterministic
     bag-of-words fake instead of downloading 130 MB of ONNX weights.
 - Per-run content-hash cache: identical text embedded once.
+- Backend selection lives in `core/backend.py` (`resolve_backend`, the
+    `MLX_MODEL_MAP` table): `auto` picks MLX only on darwin arm64 with `mlx` and
+    `mlx_embeddings` importable and a mapped model, else ONNX with a reason;
+    explicit `mlx` raises `BackendUnavailableError` (CLI exit 2). The MLX
+    implementation (`core/mlx_backend.py`, CLS pooling + L2 normalisation to match
+    fastembed's bge output) imports `mlx` lazily, so Linux never loads it. The
+    `Embedder` stays the single owner of cache logic for both.
+- The npz cache records `model` and `backend`; a different backend is a miss
+    (a file without `backend` counts as `onnx`).
 - Bounded inference batches: every backend call passes
     `batch_size=embed_batch_size` (config, default 16). Peak RSS scales with the
     largest single ONNX batch and the runtime's arena never shrinks, so
