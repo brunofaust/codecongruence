@@ -24,15 +24,17 @@ import tomllib
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
+    "DEFAULT_BACKEND",
     "DEFAULT_CACHE_TTL_DAYS",
     "DEFAULT_EMBED_BATCH_SIZE",
     "DEFAULT_MODEL",
     "STRIP_PATTERN_FLAGS",
+    "BackendRequest",
     "CodeCongruenceConfig",
     "RuleConfig",
     "StripRules",
@@ -46,6 +48,10 @@ __all__ = [
 ]
 
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
+
+type BackendRequest = Literal["auto", "mlx", "onnx"]
+
+DEFAULT_BACKEND: BackendRequest = "auto"
 
 # Texts per ONNX inference call. Peak RSS scales with the largest single batch
 # (padded to the longest sequence), and ONNX Runtime's memory arena keeps that
@@ -287,6 +293,10 @@ class CodeCongruenceConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: str = DEFAULT_MODEL
+    backend: BackendRequest = Field(
+        default=DEFAULT_BACKEND,
+        description="Embedding engine: auto (MLX on Apple Silicon when available), mlx or onnx",
+    )
     parallel: bool = True
     threads: int | None = None
     embed_batch_size: int = Field(

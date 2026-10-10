@@ -35,6 +35,10 @@ dependencies = [
   "tree-sitter-typescript>=0.23",
   "typer>=0.27.2",
 ]
+optional-dependencies.mlx = [
+  "mlx>=0.32.3; sys_platform=='darwin' and platform_machine=='arm64'",
+  "mlx-embeddings>=0.1; sys_platform=='darwin' and platform_machine=='arm64'",
+]
 urls.Homepage = "https://github.com/brunofaust/codecongruence"
 urls.Issues = "https://github.com/brunofaust/codecongruence/issues"
 urls.Repository = "https://github.com/brunofaust/codecongruence"
