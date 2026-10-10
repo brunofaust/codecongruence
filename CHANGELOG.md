@@ -1,6 +1,66 @@
 # CHANGELOG
 
 
+## v0.11.0 (2026-10-10)
+
+### Bug Fixes
+
+- **embedder**: Share the embedding cache across backends for the same model
+  ([`2ea75b3`](https://github.com/brunofaust/codecongruence/commit/2ea75b3d7370ee96717c48197fdc462e2a905e6e))
+
+The cache is keyed by model only. ONNX and MLX vectors for the same model are equivalent (min cosine
+  0.99996), so each engine reuses the other cache. The npz no longer records the backend; JSON run
+  metadata keeps it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+### Continuous Integration
+
+- **release**: Include a refreshed uv.lock in the release bump commit
+  ([`646a7a0`](https://github.com/brunofaust/codecongruence/commit/646a7a080c31aeca58f58ab617c859935f76a64c))
+
+PSR bumped pyproject/CHANGELOG/docs but not uv.lock, so each release left the editable project's
+  version stale and every non-frozen uv run rewrote it (v0.10.0 needed a manual refresh commit). Set
+  build_command = "uv lock" and assets = ["uv.lock"] so the lock lands in the same chore(release)
+  commit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+### Documentation
+
+- Document the MLX backend and its prek/pre-commit setup
+  ([`68018a8`](https://github.com/brunofaust/codecongruence/commit/68018a8d803a75b85214260e2169258ebc0f3ed2))
+
+Install extra, `backend` option and `--backend`, the ~1e-4 MLX vs ONNX caveat, and
+  additional_dependencies snippets (PEP 508 markers verified with prek and pre-commit against a
+  throwaway consumer repo).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+### Features
+
+- **embedder**: Optional MLX backend, auto-selected on Apple Silicon
+  ([`69f3c7d`](https://github.com/brunofaust/codecongruence/commit/69f3c7d56f967daa9f979de9c52e011cc5593284))
+
+Add a `backend = auto | mlx | onnx` setting and `--backend` flag. `auto` uses MLX (Apple GPU) on
+  macOS arm64 when the new `mlx` extra is installed and the model has an MLX mapping, otherwise ONNX
+  with the reason printed. An explicit `mlx` that cannot be satisfied exits 2 instead of falling
+  back.
+
+The embeddings cache now records the backend; a cache written by another backend is a miss, and a
+  cache without the field counts as ONNX.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+
 ## v0.10.0 (2026-10-10)
 
 ### Bug Fixes
@@ -26,6 +86,16 @@ Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
   ([`a901ef1`](https://github.com/brunofaust/codecongruence/commit/a901ef16fc780a12be43bee8e079c8c62551e216))
 
 Bumped to the newest releases older than the 7-day supply-chain cooldown.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+- **release**: Refresh uv.lock for 0.10.0
+  ([`4510251`](https://github.com/brunofaust/codecongruence/commit/4510251a01433d2ebf425080de4054928f0ba1e0))
+
+The prepare job bumps pyproject.toml but not uv.lock, so the lock lists the previous version and
+  every non-frozen uv run rewrites it.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 

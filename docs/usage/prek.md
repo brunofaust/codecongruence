@@ -20,7 +20,7 @@ uv tool install prek
 ```toml
 [[repos]]
 repo = "https://github.com/brunofaust/codecongruence"
-rev = "v0.10.0"
+rev = "v0.11.0"
 hooks = [{ id = "codecongruence" }]
 ```
 
@@ -29,7 +29,7 @@ Or the wire-compatible `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/brunofaust/codecongruence
-    rev: v0.10.0
+    rev: v0.11.0
     hooks:
       - id: codecongruence
 ```
@@ -53,7 +53,7 @@ the same config is a no-op on Linux CI (which stays on ONNX):
 ```toml
 [[repos]]
 repo = "https://github.com/brunofaust/codecongruence"
-rev = "v0.10.0"
+rev = "v0.11.0"
 hooks = [
   { id = "codecongruence", additional_dependencies = [
     "mlx>=0.32.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
