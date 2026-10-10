@@ -250,6 +250,12 @@ version_variables = [
   "docs/usage/pre-commit.md:rev:tf",
   "docs/usage/prek.md:rev:tf",
 ]
+# PSR stamps the new version into pyproject first, then runs build_command, then
+# stages `assets` into the SAME release commit. `uv lock` only refreshes the
+# editable project's own version entry (existing dependency pins are kept), so
+# uv.lock never lags the release and non-frozen `uv run` stops rewriting it.
+build_command = "uv lock"
+assets = [ "uv.lock" ]
 tag_format = "v{version}"
 major_on_zero = false
 # No `[skip ci]`: the bump commit lands on the release branch and must be
@@ -268,7 +274,6 @@ exclude_commit_patterns = [
   "^Merge (pull request|branch)",
 ]
 upload_to_pypi = false
-build_command = ""
 remote.type = "github"
 # `main` is a protected branch that rejects direct pushes, so the version bump
 # is generated on the `release/x.y.z` branch (allowed here) and lands on `main`

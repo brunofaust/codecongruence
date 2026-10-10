@@ -49,6 +49,9 @@ jobs:
       # stable across re-runs. Once the bump is applied, pyproject already
       # matches and we exit — this is what stops the prepare push from looping,
       # so the bump commit does NOT need `[skip ci]` and CI validates the PR.
+      # uv.lock is refreshed inside that same commit (PSR build_command + assets
+      # in pyproject.toml), never a second push, so there is still exactly one
+      # push per release and the guard above still terminates the loop.
       - name: Generate the bump onto the release branch (if not already done)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
