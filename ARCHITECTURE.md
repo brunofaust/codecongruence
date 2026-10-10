@@ -63,8 +63,9 @@
     implementation (`core/mlx_backend.py`, CLS pooling + L2 normalisation to match
     fastembed's bge output) imports `mlx` lazily, so Linux never loads it. The
     `Embedder` stays the single owner of cache logic for both.
-- The npz cache records `model` and `backend`; a different backend is a miss
-    (a file without `backend` counts as `onnx`).
+- The npz cache is keyed by `model` only and is shared across backends: ONNX
+    and MLX vectors for the same model are equivalent (min cosine 0.99996,
+    enforced by `tests/integration/test_mlx_equivalence.py`).
 - Bounded inference batches: every backend call passes
     `batch_size=embed_batch_size` (config, default 16). Peak RSS scales with the
     largest single ONNX batch and the runtime's arena never shrinks, so

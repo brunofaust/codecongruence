@@ -200,7 +200,7 @@ memory-constrained CI; raise it only if you have memory to spare.
 
 ## Cache Garbage Collection
 
-Embeddings are cached in `.codecongruence/embeddings.npz` (model- and backend-specific, content-hash keyed). A cache written by a different backend is ignored, so ONNX and MLX vectors are never mixed; the first run after switching backend re-embeds.
+Embeddings are cached in `.codecongruence/embeddings.npz` (model-specific, content-hash keyed). The cache is shared across backends for the same model, so switching between ONNX and MLX reuses it.
 
 Two GC mechanisms:
 

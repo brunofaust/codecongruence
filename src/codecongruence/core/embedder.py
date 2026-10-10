@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
 
-from codecongruence.core.backend import ONNX, BackendKind, ResolvedBackend
+from codecongruence.core.backend import ONNX, ResolvedBackend
 from codecongruence.core.config import (
     DEFAULT_CACHE_TTL_DAYS,
     DEFAULT_EMBED_BATCH_SIZE,
@@ -82,8 +82,9 @@ class Embedder:
         model_name: fastembed model identifier.
         resolved: Which engine embeds (ONNX by default, or MLX) — see
             :func:`codecongruence.core.backend.resolve_backend`. The cache
-            records it, and a cache written by another engine is a miss, so
-            vectors from different engines are never mixed.
+            is keyed by model only: ONNX and MLX vectors for the same model are
+            equivalent (see the MLX equivalence test), so either engine reuses
+            the other's cache.
         backend: Override the fastembed backend (used in tests).
         cache_dir: Directory for the per-run vector cache
             (``<cache_dir>/embeddings.npz``). Keyed by content-hash +
@@ -157,18 +158,16 @@ class Embedder:
 
     @staticmethod
     def _parse_npz(
-        path: Path, model_name: str, backend_kind: BackendKind, now: float
+        path: Path, model_name: str, now: float
     ) -> tuple[dict[str, NDArray[np.float32]], dict[str, float]] | None:
         """Read an ``embeddings.npz`` file and return ``(cache, last_used)``.
 
-        Returns ``None`` when the stored model name or backend does not match.
+        Returns ``None`` when the stored model name does not match.
         May raise ``OSError``, ``ValueError``, or ``KeyError`` on corrupt data.
 
         Args:
             path: Path to the ``.npz`` file.
             model_name: Expected model name; mismatches return ``None``.
-            backend_kind: Expected backend; mismatches return ``None``. A file
-                written before backends existed has no record and counts as ONNX.
             now: Current timestamp used when ``last_used`` is absent.
 
         Returns:
@@ -176,9 +175,6 @@ class Embedder:
         """
         data = np.load(path)
         if str(data["model"]) != model_name:
-            return None
-        stored_backend = str(data["backend"]) if "backend" in data.files else "onnx"
-        if stored_backend != backend_kind:
             return None
         hashes: list[str] = data["hashes"].tolist()
         matrix: NDArray[np.float32] = data["matrix"]
@@ -196,7 +192,7 @@ class Embedder:
             return
         now = time.time()
         try:
-            parsed = self._parse_npz(path, self.model_name, self.resolved.kind, now)
+            parsed = self._parse_npz(path, self.model_name, now)
         except (OSError, ValueError, KeyError):
             log.debug("could not load embedding cache from %s", path)
             return
@@ -218,7 +214,6 @@ class Embedder:
         path: Path,
         *,
         model: NDArray[Any],
-        backend: NDArray[Any],
         hashes: NDArray[Any],
         matrix: NDArray[np.float32],
         last_used: NDArray[np.float64],
@@ -233,7 +228,6 @@ class Embedder:
         Args:
             path: Final destination path for the ``.npz``.
             model: 0-d array holding the model name.
-            backend: 0-d array holding the backend kind.
             hashes: 1-d array of content-hash keys.
             matrix: ``(n, dim)`` float32 embedding matrix.
             last_used: 1-d float64 array of last-access timestamps.
@@ -247,7 +241,6 @@ class Embedder:
                 np.savez_compressed(
                     handle,
                     model=model,
-                    backend=backend,
                     hashes=hashes,
                     matrix=matrix,
                     last_used=last_used,
@@ -284,7 +277,6 @@ class Embedder:
             self._atomic_savez(
                 self._cache_path(cache_dir),
                 model=np.array(self.model_name),
-                backend=np.array(self.resolved.kind),
                 hashes=np.array(hashes),
                 matrix=matrix,
                 last_used=last_used_arr,

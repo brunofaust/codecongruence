@@ -1,4 +1,8 @@
-"""MLX vs ONNX equivalence on the real model. Runs only where MLX is installed."""
+"""MLX vs ONNX equivalence on the real model. Runs only where MLX is installed.
+
+This is what justifies sharing one embedding cache across both backends for the
+same model: if the engines drift apart, shared cache entries stop being valid.
+"""
 
 from __future__ import annotations
 
