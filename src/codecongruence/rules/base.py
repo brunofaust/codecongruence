@@ -10,6 +10,7 @@ from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from codecongruence.parsers import get_parser
+from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from codecongruence.core.config import RuleConfig
     from codecongruence.core.embedder import Embedder
     from codecongruence.core.git import ChangedFile
-    from codecongruence.parsers.base import LanguageParser
+    from codecongruence.parsers.base import FunctionInfo, LanguageParser
 
 __all__ = [
     "DOCS_BASE_URL",
@@ -25,6 +26,7 @@ __all__ = [
     "RuleViolation",
     "Severity",
     "apply_excludes",
+    "iter_function_candidates",
     "iter_parsed",
     "resolve_threshold",
     "similarity_violation",
@@ -153,6 +155,49 @@ def iter_parsed(
         except OSError:
             continue
         yield cf, parser, source
+
+
+def iter_function_candidates(
+    changed_files: Sequence[ChangedFile],
+    *,
+    code: str,
+    min_body_statement_count: int,
+) -> Iterator[tuple[ChangedFile, FunctionInfo]]:
+    """Yield ``(changed_file, function)`` pairs that pass the shared per-function skips.
+
+    Skips ``@overload`` stubs and dataclass ``__init__``, bodies shorter than
+    ``min_body_statement_count`` statements, and (in diff mode) functions that do
+    not overlap the file's added lines. Each skip is debug-logged under ``code``.
+
+    Args:
+        changed_files: Files to iterate (staged or all).
+        code: Rule code used as the debug-log prefix (e.g. ``"C001"``).
+        min_body_statement_count: Minimum body statements a function needs.
+
+    Yields:
+        One ``(changed_file, function)`` pair per function worth checking.
+    """
+    for cf, parser, source in iter_parsed(changed_files):
+        for func in cf.iter_functions(parser, source):
+            if is_overload_decorated(func.decorators) or is_dataclass_init(func):
+                log.debug(
+                    "%s SKIP overload_or_dataclass %s::%s", code, cf.path, func.qualified_name
+                )
+                continue
+            if func.body_statements < min_body_statement_count:
+                log.debug(
+                    "%s SKIP short_body %s::%s  stmts=%d  min=%d",
+                    code,
+                    cf.path,
+                    func.qualified_name,
+                    func.body_statements,
+                    min_body_statement_count,
+                )
+                continue
+            if cf.added_ranges and not cf.overlaps(func.line_start, func.line_end):
+                log.debug("%s SKIP not_in_diff %s::%s", code, cf.path, func.qualified_name)
+                continue
+            yield cf, func
 
 
 async def similarity_violation(

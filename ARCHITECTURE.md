@@ -88,7 +88,9 @@
 Shared building blocks so each rule holds only its own logic:
 `resolve_threshold` (config override or rule default), `iter_parsed`
 (yields `(changed_file, parser, source)`, skipping unsupported/unreadable
-files), and `similarity_violation` (embed → debug-log → build a
+files), `iter_function_candidates` (yields `(changed_file, function)` after
+the shared overload/dataclass, short-body and not-in-diff skips used by
+C001/C002/D001), and `similarity_violation` (embed → debug-log → build a
 `RuleViolation` when similarity falls below the threshold). C003 keeps its
 custom batched pairwise comparison; D006 is structural and uses only
 `iter_parsed`.

@@ -4,7 +4,12 @@ from typing import TYPE_CHECKING
 
 from codecongruence.core.config import RuleConfig
 from codecongruence.core.git import ChangedFile
-from codecongruence.rules.base import iter_parsed, resolve_threshold, similarity_violation
+from codecongruence.rules.base import (
+    iter_function_candidates,
+    iter_parsed,
+    resolve_threshold,
+    similarity_violation,
+)
 from codecongruence.rules.C001_name_vs_body import NameVsBodyRule
 
 if TYPE_CHECKING:
@@ -36,6 +41,49 @@ def test_iter_parsed_yields_readable_supported_files(tmp_path: Path) -> None:
 def test_iter_parsed_skips_unsupported_extension(tmp_path: Path) -> None:
     (tmp_path / "notes.xyz").write_text("hello")
     assert list(iter_parsed([ChangedFile(path=(tmp_path / "notes.xyz"), added_ranges=())])) == []
+
+
+CANDIDATE_SOURCE = """\
+from typing import overload
+
+
+def short():
+    return 1
+
+
+@overload
+def stub(x: int) -> int:
+    a = 1
+    b = 2
+    return x
+
+
+def long_enough():
+    a = 1
+    b = 2
+    return a + b
+
+
+def outside_diff():
+    a = 1
+    b = 2
+    return a - b
+"""
+
+
+def candidate_names(tmp_path: Path, added_ranges: tuple[tuple[int, int], ...]) -> list[str]:
+    (tmp_path / "mod.py").write_text(CANDIDATE_SOURCE)
+    changed = [ChangedFile(path=(tmp_path / "mod.py"), added_ranges=added_ranges)]
+    pairs = iter_function_candidates(changed, code="C999", min_body_statement_count=2)
+    return [func.name for _, func in pairs]
+
+
+def test_iter_function_candidates_skips_short_and_overload(tmp_path: Path) -> None:
+    assert candidate_names(tmp_path, ()) == ["long_enough", "outside_diff"]
+
+
+def test_iter_function_candidates_skips_functions_outside_diff(tmp_path: Path) -> None:
+    assert candidate_names(tmp_path, ((16, 19),)) == ["long_enough"]
 
 
 def test_iter_parsed_skips_unreadable_file(tmp_path: Path) -> None:

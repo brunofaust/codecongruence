@@ -64,7 +64,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for details.
     `code`, `description`, `default_threshold`, and an
     `async def check(changed_files, embedder, config) -> Sequence[RuleViolation]`.
     Build on the shared helpers in `rules/base.py` — `resolve_threshold`,
-    `iter_parsed`, `similarity_violation` — instead of re-implementing the
+    `iter_parsed`, `iter_function_candidates`, `similarity_violation` — instead of re-implementing the
     parse-loop and similarity-check boilerplate.
 1. Register it in `core/runner.py::default_rules()`.
 1. Add a section to `codecongruence.toml`, `codecongruence.toml.example`, and
