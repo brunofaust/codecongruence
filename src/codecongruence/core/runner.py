@@ -38,7 +38,14 @@ if TYPE_CHECKING:
     from codecongruence.core.config import CodeCongruenceConfig, RuleConfig
     from codecongruence.rules.base import Rule, RuleViolation
 
-__all__ = ["RuleRunner", "RunResult", "UnknownRuleError", "default_rules", "run_rules"]
+__all__ = [
+    "RuleRunner",
+    "RunResult",
+    "UnknownRuleError",
+    "default_rules",
+    "repo_relative_files",
+    "run_rules",
+]
 
 
 class UnknownRuleError(ValueError):
@@ -74,6 +81,28 @@ def _apply_function_excludes(
         )
         result.append(dataclasses.replace(cf, excluded_fn_ranges=excluded) if excluded else cf)
     return result
+
+
+def repo_relative_files(paths: Sequence[Path], root: Path) -> list[Path]:
+    """Normalise explicit paths to unique repo-relative paths, in input order.
+
+    Relative paths resolve against ``root``; paths outside the repo are dropped.
+    Existence is checked by the caller, so hook-passed deleted files are skipped.
+
+    Args:
+        paths: Absolute or ``root``-relative paths, e.g. a hook's file list.
+        root: Repository root the result is relative to.
+
+    Returns:
+        De-duplicated paths relative to ``root``.
+    """
+    resolved_root = root.resolve()
+    unique: dict[Path, None] = {}
+    for path in paths:
+        absolute = (path if path.is_absolute() else root / path).resolve()
+        if absolute.is_relative_to(resolved_root):
+            unique[absolute.relative_to(resolved_root)] = None
+    return list(unique)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +162,8 @@ class RuleRunner:
         """Build the :class:`ChangedFile` list the rules consume.
 
         Args:
-            explicit_files: When set, check exactly these paths instead of querying git.
+            explicit_files: When set, check exactly these paths as whole files
+                (``--all`` restricted to the list) instead of querying git.
             include_unstaged: Also include unstaged working-tree changes.
             all_files: Scan every tracked file regardless of staged status.
 
@@ -141,19 +171,19 @@ class RuleRunner:
             Resolved list of changed files with their added line ranges.
         """
         root = self.config.repo_root
-        if all_files:
-            paths = await all_tracked_files(cwd=root)
+        if all_files or explicit_files is not None:
+            paths = (
+                await all_tracked_files(cwd=root)
+                if all_files
+                else repo_relative_files(explicit_files or (), root)
+            )
             return [
                 ChangedFile(path=p, added_ranges=(), repo_root=root)
                 for p in paths
                 if (root / p).is_file()
             ]
 
-        if explicit_files:
-            paths = list(explicit_files)
-        else:
-            paths = await staged_changed_files(cwd=root, include_unstaged=include_unstaged)
-
+        paths = await staged_changed_files(cwd=root, include_unstaged=include_unstaged)
         ranges = await staged_changed_line_ranges(paths, cwd=root)
         return [ChangedFile(path=p, added_ranges=ranges.get(p, ()), repo_root=root) for p in paths]
 

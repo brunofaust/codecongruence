@@ -117,7 +117,7 @@ hooks = [
     name = "🧠 semantic · codecongruence (self)",
     language = "system",
     entry = "uv run codecongruence",
-    pass_filenames = false,
+    pass_filenames = true,
     require_serial = true
   }
 ]

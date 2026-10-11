@@ -95,7 +95,7 @@ custom batched pairwise comparison; D006 is structural and uses only
 
 ### `RuleRunner` (`core/runner.py`)
 
-- `gather_changed()` resolves staged files + their added line ranges via
+- `gather_changed()` (default mode) resolves staged files + their added line ranges via
     `git diff --cached --unified=0`. Each `ChangedFile` knows which lines were
     added — rules intersect that with AST line ranges to skip un-touched code.
 - `run()` calls `rule.check()` on every enabled rule, either in parallel
@@ -191,7 +191,13 @@ with AST line ranges (for `docstring_vs_body`, `name_vs_body`,
 `changelog_exists`).
 
 `--all` swaps `gather_changed()` for a full-repo walk and clears
-`added_ranges` so every artifact is checked.
+`added_ranges` so every artifact is checked. Explicit `FILES` take the same
+whole-file path restricted to the list: `repo_relative_files()` normalises them
+to repo-relative paths, and missing or out-of-repo entries are dropped. Because
+the root Typer group would otherwise feed `init` to the variadic `FILES`
+argument, `cli.FilesOrCommandGroup` routes positionals to a subcommand only
+when the first one names a subcommand. An explicit-file run is never a full
+scan: no cache compaction, and no `duplicate_functions` staleness.
 
 ## Reporting
 

@@ -28,18 +28,18 @@ chmod +x .git/hooks/pre-commit
 
 ## CI counterpart
 
-In CI you usually want to scan against the PR's base ref rather than rely on
-the index, so:
+In CI you usually want to scan the files the PR changed. Nothing is staged
+there, so pass them explicitly:
 
 ```bash
 git fetch origin "$BASE_REF" --depth=1
-git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" \
-  | xargs -r git add --
-uv run codecongruence --format json | tee codecongruence.json
+git diff -z --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" \
+  | xargs -0 -r uv run codecongruence --format json -- | tee codecongruence.json
 ```
 
-This stages everything the PR changed, then runs the same diff-aware checks
-your hooks run locally.
+Explicit files are checked whole-file. To keep the line-scoped diff checks
+instead, stage the changed files (`| xargs -0 -r git add --`) and run
+`codecongruence` with no file arguments.
 
 ## Why pre-commit / prek is still nicer
 

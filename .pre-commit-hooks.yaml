@@ -3,6 +3,6 @@
   description: Semantic pre-commit checks (docstring/name/CLAUDE.md/PR/comment drift).
   entry: codecongruence
   language: python
-  pass_filenames: false
+  pass_filenames: true
   stages: [pre-commit]
   require_serial: true
