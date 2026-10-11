@@ -18,7 +18,7 @@ standard `pre-commit` workflow Just Works.
 ```yaml
 repos:
   - repo: https://github.com/brunofaust/codecongruence
-    rev: v0.11.0          # or any released tag
+    rev: v0.12.0          # or any released tag
     hooks:
       - id: codecongruence
 ```
@@ -84,7 +84,7 @@ ONNX):
 ```yaml
 repos:
   - repo: https://github.com/brunofaust/codecongruence
-    rev: v0.11.0
+    rev: v0.12.0
     hooks:
       - id: codecongruence
         additional_dependencies:

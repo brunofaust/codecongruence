@@ -1,6 +1,63 @@
 # CHANGELOG
 
 
+## v0.12.0 (2026-10-11)
+
+### Bug Fixes
+
+- Resolve self-hook findings surfaced by file-list scope
+  ([`884fbb1`](https://github.com/brunofaust/codecongruence/commit/884fbb19b4b2d41f6373a2422dfed2ed4cf80d86))
+
+PR #49 made the self hook receive filenames, so CI's `prek run --all-files` now runs C003 over the
+  whole repo and reported 5 pre-existing pairs.
+
+- Extract the shared overload/dataclass, short-body and not-in-diff skips of C001/C002/D001 into
+  rules.base.iter_function_candidates (with tests). - The residual pairs (per-language parser
+  methods; per-rule check loops whose remaining shape is parallel by design) are recorded in the
+  committed baseline; .gitignore now ignores `.codecongruence/*` so the baseline negation actually
+  applies. - Refresh the codecongruence.toml comment that assumed C003 is quiet in CI.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+- **cli**: Find C003 pairs across file batches; file-list routing and messages
+  ([`46414fc`](https://github.com/brunofaust/codecongruence/commit/46414fc33055a95ed6eba4f03618c1e4a756538d))
+
+- duplicate_functions: an explicit file list now runs in `repo` scope. Each function in the listed
+  files is compared against every tracked function (rule excludes applied, embeddings cached) and
+  only pairs touching the list are reported. Pairs are keyed on the side first by (path, line), so a
+  pair split across two prek batches is found by both on one baseline key. This also replaces `scope
+  = "full"` for file lists, which rescanned the repo per batch and reported pairs outside the list.
+  - Baseline staleness for duplicate_functions is judged for listed files. - Shared helpers:
+  rules.base.apply_excludes (moved from the runner) and core.git.whole_files (one owner for the
+  whole-file walk). - A run whose given paths are all filtered out says so instead of "no staged
+  files found". - `init` is the subcommand only when it is the first token and only its own options
+  follow; `--rule X init` and `init a.py` treat it as a file. - Docs: whole-file hook scope and the
+  upgrade note (`codecongruence --all --update-baseline`).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+### Features
+
+- **cli**: Accept file paths; hook passes filenames
+  ([`c59b8b6`](https://github.com/brunofaust/codecongruence/commit/c59b8b678ef6269e294e55f84edc85874e60a244))
+
+The CLI now takes optional FILES. No files keeps the staged-diff scope (--include-unstaged still
+  applies), --all keeps the whole-repo scope, and FILES checks exactly those files whole-file, like
+  --all restricted to the list. Missing, deleted, directory and out-of-repo paths are skipped. FILES
+  with --all, --include-unstaged or --update-baseline exits 2.
+
+The hook manifest and the self hook set pass_filenames: true, so prek pre-push and `prek run
+  --all-files` in CI check the files they pass instead of an empty index (BD-1790). Baseline
+  staleness stays scoped to the files each invocation checked; an explicit list is never a full scan
+  (no cache compaction, no duplicate_functions staleness).
+
+A FilesOrCommandGroup keeps `init` routable next to the variadic FILES argument.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01CjmdF3JF6ydY8uhgWQaDBV
+
+
 ## v0.11.0 (2026-10-10)
 
 ### Bug Fixes
