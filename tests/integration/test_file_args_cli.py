@@ -5,17 +5,21 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from typer.testing import CliRunner
 
+from codecongruence import cli
 from codecongruence.cli import app
-from tests.conftest import base_git_env
+from codecongruence.core.embedder import Embedder
+from tests.conftest import BagOfWordsBackend, base_git_env
 
 if TYPE_CHECKING:
     from typer.testing import Result
+
 
 _D006_ONLY_TOML = """
 [codecongruence]
@@ -204,3 +208,144 @@ def test_prune_with_explicit_files_keeps_other_files_entries(two_file_baseline: 
     assert result.exit_code == 0, result.output
     entries = json.loads((two_file_baseline / _BASELINE_REL).read_text())["violations"]
     assert [e["file_path"] for e in entries] == ["src/new.py"]
+
+
+def test_one_line_edit_to_an_old_file_surfaces_its_pre_existing_findings(
+    scoped_repo: Path,
+) -> None:
+    """Pins whole-file scope: FILES ignore the diff, unlike the staged default."""
+    old = scoped_repo / "src" / "old.py"
+    old.write_text(_VIOLATING + "\n\nVALUE = 1\n")
+    _git(scoped_repo, "add", "src/old.py")
+
+    staged = _invoke(scoped_repo, "--format", "json")
+    explicit = _invoke(scoped_repo, "--format", "json", "src/old.py")
+
+    staged_hits = {(v["file_path"], v["line"]) for v in json.loads(staged.stdout)["violations"]}
+    explicit_hits = {(v["file_path"], v["line"]) for v in json.loads(explicit.stdout)["violations"]}
+    assert ("src/old.py", 1) not in staged_hits
+    assert explicit_hits == {("src/old.py", 1)}
+    assert explicit.exit_code == 1
+
+
+def test_all_given_paths_filtered_out_reports_a_file_list_message(scoped_repo: Path) -> None:
+    result = _invoke(scoped_repo, "missing.py", "../outside.py")
+
+    assert result.exit_code == 0, result.output
+    assert "none of the 2 given path(s) are checkable files" in " ".join(result.output.split())
+    assert "no staged files found" not in result.output
+
+
+################################################################################
+# init routing
+################################################################################
+
+
+def test_init_after_group_options_is_a_file(scoped_repo: Path) -> None:
+    (scoped_repo / "init").write_text("not python\n")
+
+    result = _invoke(scoped_repo, "--rule", "D006", "init")
+
+    assert result.exit_code == 0, result.output
+    assert "refusing to overwrite" not in result.output
+    assert "wrote" not in result.output
+
+
+def test_init_followed_by_a_file_is_a_file_list(scoped_repo: Path) -> None:
+    result = _invoke(scoped_repo, "init", "src/old.py")
+
+    assert result.exit_code == 1, result.output
+    assert "src/old.py" in result.output
+    assert "refusing to overwrite" not in result.output
+
+
+def test_lone_init_is_the_subcommand(scoped_repo: Path) -> None:
+    result = _invoke(scoped_repo, "init", "--no-download")
+
+    assert "refusing to overwrite" in result.output
+
+
+################################################################################
+# C003 across file batches
+################################################################################
+
+_C003_TOML = _D006_ONLY_TOML.replace(
+    "[rules.params_in_docstring]\nenabled = true", "[rules.params_in_docstring]\nenabled = false"
+).replace(
+    "[rules.duplicate_functions]\nenabled = false",
+    '[rules.duplicate_functions]\nenabled = true\nscope = "{scope}"',
+)
+
+
+_BODIES = {
+    "query": (
+        '    row = db.query("SELECT value FROM widgets WHERE key = %s", key)\n'
+        "    result = row.fetchone()\n"
+        "    cache.store(key, result)\n"
+        "    return result\n"
+    ),
+    "render": (
+        "    template = loader.get_template(key)\n"
+        "    html = template.render(context)\n"
+        "    response.write(html)\n"
+        "    return response\n"
+    ),
+}
+
+
+def _dup(name: str, body: str) -> str:
+    return f"def {name}(key):\n{_BODIES[body]}"
+
+
+@pytest.fixture
+def dup_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> Path:
+    """``a.py``/``b.py`` hold one duplicate pair, ``c.py``/``d.py`` an unrelated one."""
+    monkeypatch.setattr(cli, "Embedder", partial(Embedder, backend=BagOfWordsBackend()))
+    scope = getattr(request, "param", "staged")
+    _git(tmp_path, "init", "-q", "-b", "main")
+    (tmp_path / "codecongruence.toml").write_text(_C003_TOML.format(scope=scope))
+    (tmp_path / ".gitignore").write_text(".codecongruence/\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text(_dup("load_widget", "query"))
+    (tmp_path / "src" / "b.py").write_text("\n\n" + _dup("fetch_widget", "query"))
+    (tmp_path / "src" / "c.py").write_text(_dup("render_page", "render"))
+    (tmp_path / "src" / "d.py").write_text(_dup("show_page", "render"))
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "seed")
+    return tmp_path
+
+
+def _c003_keys(result: Result) -> list[tuple[str, int]]:
+    payload = json.loads(result.stdout)
+    return [(v["file_path"], v["line"]) for v in payload["violations"]]
+
+
+@pytest.mark.parametrize("dup_repo", ["staged", "full"], indirect=True)
+def test_duplicate_pair_split_across_batches_is_found_on_one_key(dup_repo: Path) -> None:
+    from_a = _invoke(dup_repo, "--format", "json", "src/a.py")
+    from_b = _invoke(dup_repo, "--format", "json", "src/b.py")
+
+    assert from_a.exit_code == 1, from_a.output
+    assert from_b.exit_code == 1, from_b.output
+    assert _c003_keys(from_a) == _c003_keys(from_b) == [("src/a.py", 1)]
+
+
+def test_duplicate_pair_baselined_by_all_is_suppressed_from_either_batch(dup_repo: Path) -> None:
+    assert _invoke(dup_repo, "--update-baseline", "--all").exit_code == 0
+
+    for path in ("src/a.py", "src/b.py"):
+        result = _invoke(dup_repo, "--format", "json", path)
+        assert result.exit_code == 0, result.output
+        assert _c003_keys(result) == []
+
+
+def test_resolved_duplicate_pair_is_stale_from_a_file_batch(dup_repo: Path) -> None:
+    assert _invoke(dup_repo, "--update-baseline", "--all").exit_code == 0
+    (dup_repo / "src" / "b.py").write_text("def other():\n    return 1\n")
+
+    result = _invoke(dup_repo, "src/a.py")
+
+    assert result.exit_code == 1, result.output
+    assert "stale baseline entry: duplicate_functions src/a.py:1" in result.output

@@ -28,7 +28,7 @@ false positives on legitimate similar-but-distinct functions.
 [rules.duplicate_functions]
 enabled = true
 threshold = 0.92
-scope = "staged"               # "staged" (default) or "full"
+scope = "staged"               # "staged" (default), "full" or "repo"
 min_body_statement_count = 3   # skip trivial one-liners
 include_comments = true        # include inline comments (default)
 skip_nested_functions = false  # opt in to drop closure-vs-parent pairs
@@ -212,10 +212,16 @@ compared set, `scope = "full"` can suppress fewer pairs than `scope = "staged"`.
 
 ### `scope`
 
-| Value                | What is compared                                                                   |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| `"staged"` (default) | Functions in staged/changed files only — fast, checks your current diff            |
-| `"full"`             | Every tracked file in the repo — slow on large codebases, good as a periodic audit |
+| Value                | What is compared                                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `"staged"` (default) | Functions in staged/changed files only — fast, checks your current diff                                           |
+| `"full"`             | Every tracked file in the repo — slow on large codebases, good as a periodic audit                                |
+| `"repo"`             | Functions in the checked files against every tracked function; only pairs touching the checked files are reported |
+
+An explicit file list (`codecongruence a.py b.py`, which is what the hook
+passes) always runs in `repo` scope, overriding the configured value. A hook
+that splits a long list into several invocations still finds a pair whose two
+sides land in different batches.
 
 `full` mode embeds every function body in the repo. The Embedder's
 content-hash disk cache means unchanged functions are not re-embedded on
@@ -232,6 +238,7 @@ on the first run; subsequent runs are fast due to caching.
 
 - `@overload`-decorated stubs and dataclass `__init__` methods are skipped.
 - A pair is only flagged once — on the function that appears first by
-    file path + line number.
+    file path + line number, whichever side was in the checked files, so the
+    baseline key does not depend on which batch found it.
 - `self` / `cls` method bodies often share boilerplate; tune `threshold`
     upward (0.95+) if you see too many false positives on class methods.

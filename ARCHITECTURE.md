@@ -195,9 +195,13 @@ with AST line ranges (for `docstring_vs_body`, `name_vs_body`,
 whole-file path restricted to the list: `repo_relative_files()` normalises them
 to repo-relative paths, and missing or out-of-repo entries are dropped. Because
 the root Typer group would otherwise feed `init` to the variadic `FILES`
-argument, `cli.FilesOrCommandGroup` routes positionals to a subcommand only
-when the first one names a subcommand. An explicit-file run is never a full
-scan: no cache compaction, and no `duplicate_functions` staleness.
+argument, `cli.FilesOrCommandGroup` routes to a subcommand only when the first
+token names one and only that subcommand's options follow. An explicit-file
+run is never a full scan, so it skips cache compaction. The runner gives every
+rule `scope = "repo"` for a file list. `duplicate_functions` then compares the
+listed functions with every tracked function (`rules.base.apply_excludes`
+applied) and reports only pairs touching the list, keyed on the side first by
+path and line. Baseline staleness for it is judged for the listed files.
 
 ## Reporting
 

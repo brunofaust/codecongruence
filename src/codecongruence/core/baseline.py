@@ -27,8 +27,10 @@ scanned) and outside functions removed by ``exclude_functions``.  File-scoped ho
 runs therefore never judge entries for files or lines the rule did not see.
 Rules whose findings are not a function of one file are judged conservatively:
 diff-scoped rules (``claude_md_vs_diff``, ``pr_description_vs_diff``,
-``docs_on_change``) never, and the pairwise ``duplicate_functions`` only on a
-full ``--all`` scan.
+``docs_on_change``) never, and the pairwise ``duplicate_functions`` only when
+its comparison set was the whole repo: a full ``--all`` scan, or an explicit
+file list (``repo`` scope, where an entry in a listed file is re-found from
+that file whichever side of the pair sorts first).
 """
 
 from __future__ import annotations
@@ -193,7 +195,7 @@ def _re_findable(cf: ChangedFile, line: int | None) -> bool:
 
 
 def find_stale(
-    baseline: Baseline, result: RunResult, *, full_scan: bool
+    baseline: Baseline, result: RunResult, *, full_scan: bool, file_list: bool = False
 ) -> tuple[BaselineEntry, ...]:
     """Return baseline entries whose violation no longer exists.
 
@@ -205,13 +207,15 @@ def find_stale(
         baseline: The loaded baseline.
         result: The raw run result, before :func:`apply_baseline`.
         full_scan: ``True`` when every tracked file was checked (``--all``).
+        file_list: ``True`` when explicit FILES were checked; pairwise rules
+            then compared against the whole repo and are judged too.
 
     Returns:
         Stale entries sorted by file, line and rule.
     """
     scopes = {rule_id: {str(cf.path): cf for cf in files} for rule_id, files in result.rule_scopes}
     ran = set(result.rules_run) - _DIFF_SCOPED_RULES
-    if not full_scan:
+    if not (full_scan or file_list):
         ran -= _PAIRWISE_RULES
     live = {(v.rule_id, v.file_path, v.line) for v in result.violations}
     stale = [

@@ -5,23 +5,29 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from dataclasses import dataclass
-from itertools import combinations
 from typing import TYPE_CHECKING
 
 from codecongruence.core.config import StripRules, scope_path
-from codecongruence.core.git import ChangedFile, all_tracked_files, current_repo_root
+from codecongruence.core.git import all_tracked_files, current_repo_root, whole_files
 from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
 from codecongruence.parsers.python import strip_comments_and_nested_docstrings
-from codecongruence.rules.base import RuleViolation, iter_parsed, resolve_threshold, strip_comments
+from codecongruence.rules.base import (
+    RuleViolation,
+    apply_excludes,
+    iter_parsed,
+    resolve_threshold,
+    strip_comments,
+)
 
 log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import re
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from codecongruence.core.config import RuleConfig
     from codecongruence.core.embedder import Embedder
+    from codecongruence.core.git import ChangedFile
 
 __all__ = ["DuplicateFunctionsRule"]
 
@@ -173,6 +179,34 @@ def _calls(left: _FuncEntry, right: _FuncEntry, name_counts: Mapping[str, int]) 
     )
 
 
+def _pairs(candidate_count: int, total: int) -> Iterator[tuple[int, int]]:
+    """Yield index pairs with at least one side among the leading candidates.
+
+    Args:
+        candidate_count: Entries ``[0, candidate_count)`` are candidates.
+        total: Number of entries; the rest form the comparison set only.
+
+    Yields:
+        ``(i, j)`` with ``i < j`` and ``i < candidate_count``, each pair once.
+    """
+    for i in range(candidate_count):
+        for j in range(i + 1, total):
+            yield i, j
+
+
+async def _tracked_files(changed_files: Sequence[ChangedFile]) -> list[ChangedFile]:
+    """Return every tracked file of the repo the checked files belong to, whole-file.
+
+    Args:
+        changed_files: The checked files; their repo root locates the repository.
+
+    Returns:
+        Whole-file entries for every readable tracked file — the ``--all`` universe.
+    """
+    repo_root = changed_files[0].repo_root if changed_files else await current_repo_root()
+    return whole_files(await all_tracked_files(cwd=repo_root), repo_root)
+
+
 @dataclass(frozen=True, slots=True)
 class _Options:
     """Everything ``check`` reads out of :class:`RuleConfig` for one run."""
@@ -210,7 +244,10 @@ class DuplicateFunctionsRule:
         ``staged`` scope (default) compares only functions from the provided
         ``changed_files``.  ``full`` scope walks every tracked file in the repo
         and compares all pairs — useful as a periodic audit but slow on large
-        codebases.
+        codebases.  ``repo`` scope (forced for explicit file lists) compares
+        each function in ``changed_files`` against every function in the repo
+        and reports only pairs touching ``changed_files``, so a pair split
+        across two hook batches is still found, once per batch, on one key.
 
         All bodies are embedded in a single batch call so the ONNX runtime
         runs once, then pairwise cosines are computed in pure NumPy.
@@ -231,15 +268,27 @@ class DuplicateFunctionsRule:
             function that appears first by file path then line number.
         """
         options = self._options(config)
-
-        entries = await self._collect(
+        collect_scope = "staged" if options.scope == "repo" else options.scope
+        candidates = await self._collect(
             changed_files,
-            options.scope,
+            collect_scope,
             options.min_stmts,
             options.include_comments,
             strip_rules=options.strip_rules,
             min_remnant_chars=options.min_remnant_chars,
         )
+        entries = list(candidates)
+        if options.scope == "repo" and candidates:
+            universe = await self._collect(
+                apply_excludes(await _tracked_files(changed_files), config),
+                "staged",
+                options.min_stmts,
+                options.include_comments,
+                strip_rules=options.strip_rules,
+                min_remnant_chars=options.min_remnant_chars,
+            )
+            known = {(e.file_path, e.line) for e in entries}
+            entries.extend(e for e in universe if (e.file_path, e.line) not in known)
         if len(entries) < _MIN_PAIR_COUNT:
             return []
 
@@ -256,8 +305,10 @@ class DuplicateFunctionsRule:
         )
 
         violations: list[RuleViolation] = []
-        for i, j in combinations(range(len(entries)), 2):
-            a, b = entries[i], entries[j]
+        for i, j in _pairs(len(candidates), len(entries)):
+            # Report on the side first by (path, line) so the baseline key does
+            # not depend on which file list found the pair.
+            a, b = sorted((entries[i], entries[j]), key=lambda e: (e.file_path, e.line))
             if a.file_path == b.file_path and a.qualified_name == b.qualified_name:
                 continue
             if options.skip_nested_functions and _encloses(a, b):
@@ -333,7 +384,7 @@ class DuplicateFunctionsRule:
 
         Args:
             changed_files: Staged files from the runner.
-            scope: ``"staged"`` or ``"full"``.
+            scope: ``"staged"`` or ``"full"`` (``check`` resolves ``"repo"``).
             min_stmts: Skip functions with fewer body statements than this.
             include_comments: Whether inline comments remain in embedded bodies.
             strip_rules: Compiled boilerplate patterns, global and scoped,
@@ -353,16 +404,7 @@ class DuplicateFunctionsRule:
         the remnant would drop heavily-boilerplate functions out of the corpus
         entirely — a suppression, which C003 does not do by default.
         """
-        if scope == "full":
-            repo_root = changed_files[0].repo_root if changed_files else await current_repo_root()
-            paths = await all_tracked_files(cwd=repo_root)
-            files = [
-                ChangedFile(path=p, added_ranges=(), repo_root=repo_root)
-                for p in paths
-                if (repo_root / p).is_file()
-            ]
-        else:
-            files = list(changed_files)
+        files = await _tracked_files(changed_files) if scope == "full" else list(changed_files)
 
         seen: set[tuple[str, int]] = set()
         entries: list[_FuncEntry] = []

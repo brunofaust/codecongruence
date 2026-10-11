@@ -105,6 +105,20 @@ checked as whole files, so a commit that touches a file surfaces drift already
 present elsewhere in it. Baseline those findings (`--update-baseline --all`) or
 fix them.
 
+> **Upgrading to the file-list hook.** The hook now passes filenames and checks
+> each named file *whole* (no diff ranges). The first commit that touches an
+> old file therefore reports every pre-existing, non-baselined finding in it,
+> even on a one-line edit. Run this once when you upgrade, and commit the
+> baseline:
+>
+> ```bash
+> codecongruence --all --update-baseline
+> ```
+
+With a file list, `duplicate_functions` compares the listed files against every
+function in the repo and reports only pairs touching the list, so a duplicate
+pair split across two hook batches is still found, on one baseline key.
+
 ## Documentation
 
 - [CLI reference](docs/usage/cli.md) — every flag + JSON schema.
@@ -182,8 +196,8 @@ therefore never flag entries for other files, and `--prune-baseline FILES`
 removes only those files' stale entries. Run `codecongruence --all` to judge
 the whole baseline. Diff-scoped
 rules (`claude_md_vs_diff`, `pr_description_vs_diff`, `docs_on_change`) are never
-judged, and `duplicate_functions` only on `--all`, since an explicit file list
-may not be the whole repo. `--prune-baseline` cannot be combined with
+judged, and `duplicate_functions` only on `--all` or an explicit file list,
+the two runs that compare against the whole repo. `--prune-baseline` cannot be combined with
 `--update-baseline`. `--update-baseline` rewrites the whole baseline file, so it
 refuses explicit files (exit `2`).
 

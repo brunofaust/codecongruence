@@ -58,37 +58,40 @@ class BackendChoice(StrEnum):
 
 
 class FilesOrCommandGroup(TyperGroup):
-    """Root group whose positional tokens are files unless the first one names a subcommand.
+    """Root group whose positional tokens are files unless the whole line is a subcommand.
 
     Click hands every positional of a group to its declared arguments, so a
-    variadic ``FILES`` argument would swallow ``init``. Split at the subcommand
-    token instead; otherwise parse like a plain command (options may follow files).
+    variadic ``FILES`` argument would swallow ``init``. A subcommand is routed
+    only when it is the FIRST token and only its own options follow, so a hook
+    passing ``--rule X init`` or ``init other.py`` checks a file named ``init``.
+    A lone ``init`` is always the subcommand; pass ``./init`` to check that file.
     """
 
     def subcommand_index(self, ctx: ClickContext, args: Sequence[str]) -> int | None:
-        """Return the index of the subcommand token in ``args``, or ``None`` for files.
+        """Return ``0`` when ``args`` invoke a subcommand, or ``None`` when they are files.
 
         Args:
-            ctx: Click context, used to read the group's option definitions.
+            ctx: Click context, used to read the subcommand's option definitions.
             args: Raw command-line tokens.
         """
+        command = self.commands.get(args[0]) if args else None
+        if command is None:
+            return None
         valued = {
             name
-            for param in self.get_params(ctx)
+            for param in command.get_params(ctx)
             if isinstance(param, TyperOption) and not param.is_flag and not param.count
             for name in param.opts
         }
         skip_value = False
-        for index, arg in enumerate(args):
+        for arg in args[1:]:
             if skip_value:
                 skip_value = False
-            elif arg == "--":
+            elif arg == "--" or not arg.startswith("-"):
                 return None
-            elif arg.startswith("-"):
-                skip_value = arg in valued
             else:
-                return index if arg in self.commands else None
-        return None
+                skip_value = arg in valued
+        return 0
 
     def parse_args(self, ctx: ClickContext, args: list[str]) -> list[str]:
         """Parse group options, routing positionals to ``FILES`` or a subcommand.
@@ -696,6 +699,7 @@ async def run(
     result = await runner.run(
         only=rule,
         pre_gathered=changed,
+        file_list=explicit_files is not None,
     )
 
     embedder.save(force_cleanup=all_files)
@@ -718,7 +722,7 @@ async def run(
     suppressed = 0
     stale: tuple[BaselineEntry, ...] = ()
     if bl is not None:
-        stale = find_stale(bl, result, full_scan=all_files)
+        stale = find_stale(bl, result, full_scan=all_files, file_list=explicit_files is not None)
         result, suppressed = apply_baseline(result, bl)
     if prune_stale and stale:
         removed = prune_baseline(baseline_path(repo_root), stale)
@@ -731,7 +735,9 @@ async def run(
     if output_format is OutputFormat.json:
         JsonReporter().report(result, stale_baseline=stale, backend=embedder.resolved)
     else:
-        TextReporter(verbose=verbose).report(result)
+        TextReporter(verbose=verbose).report(
+            result, given_paths=None if explicit_files is None else len(explicit_files)
+        )
         if suppressed > 0:
             from rich.console import Console  # noqa: PLC0415
 
