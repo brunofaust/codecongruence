@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging  # guard:allow — repo-wide convention is stdlib logging
 import re
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from codecongruence.parsers import get_parser
@@ -22,6 +24,7 @@ __all__ = [
     "Rule",
     "RuleViolation",
     "Severity",
+    "apply_excludes",
     "iter_parsed",
     "resolve_threshold",
     "similarity_violation",
@@ -206,3 +209,36 @@ async def similarity_violation(
         similarity=sim,
         threshold=threshold,
     )
+
+
+def apply_excludes(changed: Sequence[ChangedFile], config: RuleConfig) -> list[ChangedFile]:
+    """Drop files matching ``exclude`` and mark functions matching ``exclude_functions``.
+
+    Args:
+        changed: Files a rule would check.
+        config: The rule's configuration (global excludes already merged in).
+
+    Returns:
+        The kept files, each carrying its excluded function ranges.
+    """
+    kept = [cf for cf in changed if not any(fnmatch(str(cf.path), p) for p in config.exclude)]
+    if not config.exclude_functions:
+        return kept
+    result: list[ChangedFile] = []
+    for cf in kept:
+        parser = get_parser(cf.path.suffix)
+        if parser is None:
+            result.append(cf)
+            continue
+        try:
+            source = cf.abs_path.read_text(encoding="utf-8")
+        except OSError:
+            result.append(cf)
+            continue
+        excluded = tuple(
+            (func.line_start, func.line_end)
+            for func in parser.iter_functions(source, cf.path)
+            if any(fnmatch(func.qualified_name, pat) for pat in config.exclude_functions)
+        )
+        result.append(dataclasses.replace(cf, excluded_fn_ranges=excluded) if excluded else cf)
+    return result

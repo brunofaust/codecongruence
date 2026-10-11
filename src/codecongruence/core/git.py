@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator
 
     from codecongruence.parsers.base import CommentBlock, FunctionInfo, LanguageParser
 
@@ -29,6 +29,7 @@ __all__ = [
     "main_worktree_root",
     "staged_changed_files",
     "staged_changed_line_ranges",
+    "whole_files",
 ]
 
 
@@ -178,6 +179,21 @@ async def main_worktree_root(cwd: Path | None = None) -> Path | None:
             path = line[len(prefix) :].strip()
             return Path(path) if path else None
     return None
+
+
+def whole_files(paths: Iterable[Path], root: Path) -> list[ChangedFile]:
+    """Return whole-file entries (no diff ranges) for the ``paths`` that are files under ``root``.
+
+    Args:
+        paths: Paths relative to ``root``.
+        root: Repository root the entries resolve against.
+
+    Returns:
+        One :class:`ChangedFile` per readable path, in input order.
+    """
+    return [
+        ChangedFile(path=p, added_ranges=(), repo_root=root) for p in paths if (root / p).is_file()
+    ]
 
 
 async def all_tracked_files(*, cwd: Path | None = None) -> list[Path]:

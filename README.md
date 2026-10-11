@@ -50,9 +50,11 @@ resolved backend is printed once per run on stderr and recorded in the `--format
 > between the two. If your team runs the hook on Macs and CI on Linux, pin
 > `backend = "onnx"` for byte-identical results everywhere.
 
-> **Default mode checks only staged files.** If nothing is staged (`git add`),
-> the tool prints a warning and exits cleanly — it does not scan the whole repo.
-> Use `--all` for ad-hoc whole-repo scans.
+> **Three scopes.** No arguments checks the staged diff (`--include-unstaged`
+> adds unstaged changes); `--all` checks every tracked file;
+> `codecongruence file1 file2 …` checks exactly those files, whole-file. If
+> nothing is staged, the default mode finds nothing to check. It does not fall
+> back to scanning the whole repo.
 
 ## AI context files
 
@@ -91,8 +93,31 @@ Each rule has a stable short **code** (`C00x` = code-identifier drift,
 
 All rules are **diff-aware** by default — they only check things that touch the
 current staged diff (`git add` first). Pass `--all` to scan the whole repo
-without staging anything. If nothing is staged and `--all` is not given, the
-tool exits with a warning rather than silently succeeding.
+without staging anything, or name files (`codecongruence a.py b.py`) to check
+exactly those files in full. Rules that compare against the staged diff
+(`claude_md_vs_diff`, `docs_on_change`) still read the index, so with nothing
+staged they find nothing.
+
+The published hook sets `pass_filenames: true`, so prek / pre-commit hand it
+the files to check: the staged files on commit, the pushed files on
+`pre-push`, every tracked file under `run --all-files`. Explicit files are
+checked as whole files, so a commit that touches a file surfaces drift already
+present elsewhere in it. Baseline those findings (`--update-baseline --all`) or
+fix them.
+
+> **Upgrading to the file-list hook.** The hook now passes filenames and checks
+> each named file *whole* (no diff ranges). The first commit that touches an
+> old file therefore reports every pre-existing, non-baselined finding in it,
+> even on a one-line edit. Run this once when you upgrade, and commit the
+> baseline:
+>
+> ```bash
+> codecongruence --all --update-baseline
+> ```
+
+With a file list, `duplicate_functions` compares the listed files against every
+function in the repo and reports only pairs touching the list, so a duplicate
+pair split across two hook batches is still found, on one baseline key.
 
 ## Documentation
 
@@ -113,6 +138,9 @@ codecongruence
 
 # Full repo audit
 codecongruence --all
+
+# Exactly these files, whole-file (what the prek / pre-commit hook passes)
+codecongruence src/app.py src/util.py
 
 # --- output ---
 codecongruence --format json            # machine-readable, for CI
@@ -162,12 +190,16 @@ codecongruence --prune-baseline         # removes only stale entries, never adds
 ```
 
 An entry is judged stale only when the run could have re-found it: its file was
-checked, its line is inside the checked diff ranges (or the run was `--all`), and
-its rule ran. Hook runs over a few staged files therefore never flag entries for
-other files; run `codecongruence --all` to judge the whole baseline. Diff-scoped
+checked, its line is inside the checked diff ranges (or the run was `--all` or
+named the file explicitly), and its rule ran. Hook runs over a few files
+therefore never flag entries for other files, and `--prune-baseline FILES`
+removes only those files' stale entries. Run `codecongruence --all` to judge
+the whole baseline. Diff-scoped
 rules (`claude_md_vs_diff`, `pr_description_vs_diff`, `docs_on_change`) are never
-judged, and `duplicate_functions` only on `--all`. `--prune-baseline` cannot be
-combined with `--update-baseline`.
+judged, and `duplicate_functions` only on `--all` or an explicit file list,
+the two runs that compare against the whole repo. `--prune-baseline` cannot be combined with
+`--update-baseline`. `--update-baseline` rewrites the whole baseline file, so it
+refuses explicit files (exit `2`).
 
 ## Configuration
 

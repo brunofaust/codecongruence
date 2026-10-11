@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from typer._click import Context as ClickContext
+from typer.core import TyperGroup, TyperOption
 
 from codecongruence.core.ai_context import write_ai_context_files
 from codecongruence.core.backend import BackendUnavailableError, resolve_backend
@@ -55,8 +57,64 @@ class BackendChoice(StrEnum):
     onnx = "onnx"
 
 
+class FilesOrCommandGroup(TyperGroup):
+    """Root group whose positional tokens are files unless the whole line is a subcommand.
+
+    Click hands every positional of a group to its declared arguments, so a
+    variadic ``FILES`` argument would swallow ``init``. A subcommand is routed
+    only when it is the FIRST token and only its own options follow, so a hook
+    passing ``--rule X init`` or ``init other.py`` checks a file named ``init``.
+    A lone ``init`` is always the subcommand; pass ``./init`` to check that file.
+    """
+
+    def subcommand_index(self, ctx: ClickContext, args: Sequence[str]) -> int | None:
+        """Return ``0`` when ``args`` invoke a subcommand, or ``None`` when they are files.
+
+        Args:
+            ctx: Click context, used to read the subcommand's option definitions.
+            args: Raw command-line tokens.
+        """
+        command = self.commands.get(args[0]) if args else None
+        if command is None:
+            return None
+        valued = {
+            name
+            for param in command.get_params(ctx)
+            if isinstance(param, TyperOption) and not param.is_flag and not param.count
+            for name in param.opts
+        }
+        skip_value = False
+        for arg in args[1:]:
+            if skip_value:
+                skip_value = False
+            elif arg == "--" or not arg.startswith("-"):
+                return None
+            else:
+                skip_value = arg in valued
+        return 0
+
+    def parse_args(self, ctx: ClickContext, args: list[str]) -> list[str]:
+        """Parse group options, routing positionals to ``FILES`` or a subcommand.
+
+        Args:
+            ctx: Click context that receives the parsed group parameters.
+            args: Raw command-line tokens.
+
+        Returns:
+            The subcommand's own arguments (empty when no subcommand was named).
+        """
+        index = self.subcommand_index(ctx, args)
+        if index is None:
+            ctx.allow_interspersed_args = True
+            return super(TyperGroup, self).parse_args(ctx, args)
+        super(TyperGroup, self).parse_args(ctx, args[:index])
+        ctx._protected_args, ctx.args = args[index : index + 1], args[index + 1 :]
+        return ctx.args
+
+
 app = typer.Typer(
     name="codecongruence",
+    cls=FilesOrCommandGroup,
     no_args_is_help=False,
     add_completion=False,
     help="Semantic pre-commit checks. Keep your repo congruent — one story, not many.",
@@ -224,6 +282,16 @@ def purge_models_callback(value: bool) -> None:
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
+    files: Annotated[
+        list[Path] | None,
+        typer.Argument(
+            help=(
+                "Check exactly these files (whole files; missing, deleted or "
+                "out-of-repo paths are skipped). Omit to check the staged diff."
+            ),
+            show_default=False,
+        ),
+    ] = None,
     rule: Annotated[
         str | None,
         typer.Option(
@@ -324,7 +392,7 @@ def main(
         ),
     ] = False,
 ) -> None:
-    """Run codecongruence on staged changes (default) or the whole repo (``--all``).
+    """Check the staged diff (default), the whole repo (``--all``) or the given FILES.
 
     Raises:
         Exit: With code ``1`` when any error-severity violation is found, or
@@ -333,8 +401,11 @@ def main(
     if ctx.invoked_subcommand is not None:
         return
 
+    # Resolve against the invocation directory now: ``run`` chdirs to the repo root.
+    explicit_files = [Path.cwd() / f for f in files] if files else None
     exit_code = asyncio.run(
         run(
+            explicit_files=explicit_files,
             rule=rule,
             config_path=config_path,
             all_files=all_files,
@@ -508,6 +579,44 @@ def enable_debug_logging() -> None:
     logger.addHandler(handler)
 
 
+def flag_conflict(
+    *,
+    explicit_files: bool,
+    all_files: bool,
+    include_unstaged: bool,
+    update_baseline: bool,
+    prune_stale: bool,
+) -> str | None:
+    """Describe the first ambiguous flag combination, or return ``None`` when valid.
+
+    Explicit FILES already fix the scope, so ``--all`` / ``--include-unstaged``
+    are ambiguous with them, and ``--update-baseline`` would rewrite the whole
+    baseline from a partial run.
+
+    Args:
+        explicit_files: FILES were given on the command line.
+        all_files: ``--all`` was given.
+        include_unstaged: ``--include-unstaged`` was given.
+        update_baseline: ``--update-baseline`` was given.
+        prune_stale: ``--prune-baseline`` was given.
+
+    Returns:
+        The error message for the conflict, or ``None``.
+    """
+    if update_baseline and prune_stale:
+        return "--update-baseline and --prune-baseline are mutually exclusive"
+    if not explicit_files:
+        return None
+    for flag, given in (
+        ("--all", all_files),
+        ("--include-unstaged", include_unstaged),
+        ("--update-baseline", update_baseline),
+    ):
+        if given:
+            return f"{flag} with explicit FILES is ambiguous; pass either FILES or {flag}"
+    return None
+
+
 async def run(
     *,
     rule: str | None,
@@ -520,10 +629,13 @@ async def run(
     prune_stale: bool = False,
     backend: BackendRequest | None = None,
     debug: bool = False,
+    explicit_files: Sequence[Path] | None = None,
 ) -> int:
     """Run the selected rules over the changed files and report violations.
 
     Args:
+        explicit_files: Check exactly these files (whole-file scope) instead of
+            the staged diff. ``None`` keeps the git-derived scope.
         rule: Single rule id to run, or ``None`` to run every default rule.
         config_path: Explicit config file, or ``None`` to auto-discover.
         all_files: Scan every tracked file instead of only the staged diff.
@@ -537,13 +649,18 @@ async def run(
 
     Returns:
         Process exit code — ``0`` when clean, ``1`` when violations are found,
-        and ``2`` when the rule selection or an explicit backend is invalid.
+        and ``2`` when the flags conflict or the rule selection or an explicit
+        backend is invalid.
     """
-    if update_baseline and prune_stale:
-        typer.echo(
-            "codecongruence: --update-baseline and --prune-baseline are mutually exclusive",
-            err=True,
-        )
+    conflict = flag_conflict(
+        explicit_files=explicit_files is not None,
+        all_files=all_files,
+        include_unstaged=include_unstaged,
+        update_baseline=update_baseline,
+        prune_stale=prune_stale,
+    )
+    if conflict is not None:
+        typer.echo(f"codecongruence: {conflict}", err=True)
         return 2
 
     if debug:
@@ -566,7 +683,9 @@ async def run(
     except UnknownRuleError as exc:
         typer.echo(f"codecongruence: {exc}", err=True)
         return 2
-    changed = await runner.gather_changed(all_files=all_files, include_unstaged=include_unstaged)
+    changed = await runner.gather_changed(
+        explicit_files=explicit_files, all_files=all_files, include_unstaged=include_unstaged
+    )
 
     if verbose and output_format is OutputFormat.text:
         from rich.console import Console  # noqa: PLC0415
@@ -580,6 +699,7 @@ async def run(
     result = await runner.run(
         only=rule,
         pre_gathered=changed,
+        file_list=explicit_files is not None,
     )
 
     embedder.save(force_cleanup=all_files)
@@ -602,7 +722,7 @@ async def run(
     suppressed = 0
     stale: tuple[BaselineEntry, ...] = ()
     if bl is not None:
-        stale = find_stale(bl, result, full_scan=all_files)
+        stale = find_stale(bl, result, full_scan=all_files, file_list=explicit_files is not None)
         result, suppressed = apply_baseline(result, bl)
     if prune_stale and stale:
         removed = prune_baseline(baseline_path(repo_root), stale)
@@ -615,7 +735,9 @@ async def run(
     if output_format is OutputFormat.json:
         JsonReporter().report(result, stale_baseline=stale, backend=embedder.resolved)
     else:
-        TextReporter(verbose=verbose).report(result)
+        TextReporter(verbose=verbose).report(
+            result, given_paths=None if explicit_files is None else len(explicit_files)
+        )
         if suppressed > 0:
             from rich.console import Console  # noqa: PLC0415
 

@@ -1,8 +1,39 @@
 # CLI reference
 
 ```text
-codecongruence [OPTIONS] [COMMAND]
+codecongruence [OPTIONS] [FILES]...
+codecongruence [OPTIONS] COMMAND [ARGS]...
 ```
+
+## Scope
+
+| Invocation                       | Checks                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| `codecongruence`                 | The staged diff: added lines of staged files (`--include-unstaged` adds more). |
+| `codecongruence --all`           | Every tracked and untracked non-ignored file, whole-file.                      |
+| `codecongruence FILE [FILE ...]` | Exactly those files, whole-file (like `--all` restricted to the list).         |
+
+With explicit files every line is in scope. Paths resolve against the current
+directory and may be absolute. Missing or deleted paths, directories and paths
+outside the repo are skipped, so a hook that passes a deleted file does not
+crash the run. Files no parser supports are ignored as under `--all`. When
+every given path is skipped, the run prints `nothing to check — none of the N given path(s) are checkable files.` and exits `0`.
+
+`init` runs the subcommand only when it is the first token and only `init`'s
+own options follow it. `codecongruence --rule X init` and
+`codecongruence init other.py` treat `init` as a file. A lone
+`codecongruence init` is always the subcommand, so a hook batch that holds only
+a repo-root file named `init` runs the subcommand. Pass `./init` or
+`codecongruence -- init` to check that file.
+
+`duplicate_functions` with FILES compares the listed files against every
+function in the repo and reports only pairs touching the list, whatever its
+`scope`. Each pair is reported on the side first by path and line, so separate
+runs over each side produce the same baseline key.
+
+FILES cannot be combined with `--all`, `--include-unstaged` or
+`--update-baseline`. Each pairing is ambiguous, or would rewrite the whole
+baseline from a partial run, so it exits `2`.
 
 ## Global options
 
@@ -99,6 +130,9 @@ fields will not change type.
 ```bash
 # Pre-commit hook against staged files (default).
 codecongruence
+
+# Exactly these files, whole-file (what the published hook runs).
+codecongruence src/app.py src/util.py
 
 # CI-style PR audit on the whole repo, JSON for further processing.
 codecongruence --all --format json > codecongruence.json

@@ -29,13 +29,19 @@ class TextReporter:
         self.verbose = verbose
         self.console = console or Console()
 
-    def report(self, result: RunResult) -> None:
-        """Render ``result`` to the console."""
+    def report(self, result: RunResult, *, given_paths: int | None = None) -> None:
+        """Render ``result``; ``given_paths`` counts explicit FILES (``None`` for git scope)."""
         if not result.files_checked:
-            self.console.print(
-                "[yellow]codecongruence: nothing to check[/yellow] — "
-                "no staged files found. Stage changes first or run with [bold]--all[/bold]."
-            )
+            if given_paths is not None:
+                self.console.print(
+                    "[yellow]codecongruence: nothing to check[/yellow] — "
+                    f"none of the {given_paths} given path(s) are checkable files."
+                )
+            else:
+                self.console.print(
+                    "[yellow]codecongruence: nothing to check[/yellow] — "
+                    "no staged files found. Stage changes first or run with [bold]--all[/bold]."
+                )
             return
 
         if not result.violations:

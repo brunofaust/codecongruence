@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 from dataclasses import dataclass
-from fnmatch import fnmatch
 from typing import TYPE_CHECKING
 
 from codecongruence.core.embedder import Embedder
@@ -19,8 +18,9 @@ from codecongruence.core.git import (
     all_tracked_files,
     staged_changed_files,
     staged_changed_line_ranges,
+    whole_files,
 )
-from codecongruence.parsers import get_parser
+from codecongruence.rules.base import apply_excludes
 from codecongruence.rules.C001_name_vs_body import NameVsBodyRule
 from codecongruence.rules.C002_param_name_vs_usage import ParamNameVsUsageRule
 from codecongruence.rules.C003_duplicate_functions import DuplicateFunctionsRule
@@ -38,42 +38,40 @@ if TYPE_CHECKING:
     from codecongruence.core.config import CodeCongruenceConfig, RuleConfig
     from codecongruence.rules.base import Rule, RuleViolation
 
-__all__ = ["RuleRunner", "RunResult", "UnknownRuleError", "default_rules", "run_rules"]
+__all__ = [
+    "RuleRunner",
+    "RunResult",
+    "UnknownRuleError",
+    "default_rules",
+    "repo_relative_files",
+    "run_rules",
+]
 
 
 class UnknownRuleError(ValueError):
     """Raised when ``--rule`` names a rule id that does not exist."""
 
 
-def _apply_file_excludes(changed: list[ChangedFile], patterns: list[str]) -> list[ChangedFile]:
-    if not patterns:
-        return changed
-    return [cf for cf in changed if not any(fnmatch(str(cf.path), pat) for pat in patterns)]
+def repo_relative_files(paths: Sequence[Path], root: Path) -> list[Path]:
+    """Normalise explicit paths to unique repo-relative paths, in input order.
 
+    Relative paths resolve against ``root``; paths outside the repo are dropped.
+    Existence is checked by the caller, so hook-passed deleted files are skipped.
 
-def _apply_function_excludes(
-    changed: list[ChangedFile], exclude_fns: list[str]
-) -> list[ChangedFile]:
-    if not exclude_fns:
-        return changed
-    result: list[ChangedFile] = []
-    for cf in changed:
-        parser = get_parser(cf.path.suffix)
-        if parser is None:
-            result.append(cf)
-            continue
-        try:
-            source = cf.abs_path.read_text(encoding="utf-8")
-        except OSError:
-            result.append(cf)
-            continue
-        excluded = tuple(
-            (func.line_start, func.line_end)
-            for func in parser.iter_functions(source, cf.path)
-            if any(fnmatch(func.qualified_name, pat) for pat in exclude_fns)
-        )
-        result.append(dataclasses.replace(cf, excluded_fn_ranges=excluded) if excluded else cf)
-    return result
+    Args:
+        paths: Absolute or ``root``-relative paths, e.g. a hook's file list.
+        root: Repository root the result is relative to.
+
+    Returns:
+        De-duplicated paths relative to ``root``.
+    """
+    resolved_root = root.resolve()
+    unique: dict[Path, None] = {}
+    for path in paths:
+        absolute = (path if path.is_absolute() else root / path).resolve()
+        if absolute.is_relative_to(resolved_root):
+            unique[absolute.relative_to(resolved_root)] = None
+    return list(unique)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +131,8 @@ class RuleRunner:
         """Build the :class:`ChangedFile` list the rules consume.
 
         Args:
-            explicit_files: When set, check exactly these paths instead of querying git.
+            explicit_files: When set, check exactly these paths as whole files
+                (``--all`` restricted to the list) instead of querying git.
             include_unstaged: Also include unstaged working-tree changes.
             all_files: Scan every tracked file regardless of staged status.
 
@@ -141,19 +140,15 @@ class RuleRunner:
             Resolved list of changed files with their added line ranges.
         """
         root = self.config.repo_root
-        if all_files:
-            paths = await all_tracked_files(cwd=root)
-            return [
-                ChangedFile(path=p, added_ranges=(), repo_root=root)
-                for p in paths
-                if (root / p).is_file()
-            ]
+        if all_files or explicit_files is not None:
+            paths = (
+                await all_tracked_files(cwd=root)
+                if all_files
+                else repo_relative_files(explicit_files or (), root)
+            )
+            return whole_files(paths, root)
 
-        if explicit_files:
-            paths = list(explicit_files)
-        else:
-            paths = await staged_changed_files(cwd=root, include_unstaged=include_unstaged)
-
+        paths = await staged_changed_files(cwd=root, include_unstaged=include_unstaged)
         ranges = await staged_changed_line_ranges(paths, cwd=root)
         return [ChangedFile(path=p, added_ranges=ranges.get(p, ()), repo_root=root) for p in paths]
 
@@ -206,6 +201,7 @@ class RuleRunner:
         include_unstaged: bool = False,
         all_files: bool = False,
         pre_gathered: Sequence[ChangedFile] | None = None,
+        file_list: bool = False,
     ) -> RunResult:
         """Execute selected rules and return their combined violations.
 
@@ -217,10 +213,13 @@ class RuleRunner:
             pre_gathered: Pre-computed file list from :meth:`gather_changed`.
                 When provided, ``explicit_files`` / ``include_unstaged`` /
                 ``all_files`` are ignored — the caller owns the discovery step.
+            file_list: The files are an explicit list (implied by
+                ``explicit_files``); pairwise rules then run in ``repo`` scope.
 
         Returns:
             Aggregated :class:`RunResult` with all violations sorted by file + line.
         """
+        file_list = file_list or explicit_files is not None
         if pre_gathered is not None:
             changed = list(pre_gathered)
         else:
@@ -234,10 +233,10 @@ class RuleRunner:
         prepared: list[tuple[Rule, list[ChangedFile], RuleConfig]] = []
         for rule in selected:
             rule_cfg = self.config.rule(rule.rule_id)
-            filtered = _apply_function_excludes(
-                _apply_file_excludes(changed, rule_cfg.exclude),
-                rule_cfg.exclude_functions,
-            )
+            if file_list:
+                # File batches compare against the whole repo (see C003 ``repo`` scope).
+                rule_cfg = rule_cfg.model_copy(update={"scope": "repo"})
+            filtered = apply_excludes(changed, rule_cfg)
             prepared.append((rule, filtered, rule_cfg))
 
         rule_results: list[tuple[Rule, Sequence[RuleViolation]]] = []
