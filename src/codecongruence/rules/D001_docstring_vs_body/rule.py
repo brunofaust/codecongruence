@@ -5,10 +5,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated
 from codecongruence.rules.base import (
     RuleViolation,
-    iter_parsed,
+    iter_function_candidates,
     resolve_threshold,
     similarity_violation,
     strip_comments,
@@ -60,45 +59,30 @@ class DocstringVsBodyRule:
         include_comments = bool(getattr(config, "include_comments", False))
 
         violations: list[RuleViolation] = []
-        for cf, parser, source in iter_parsed(changed_files):
-            for func in cf.iter_functions(parser, source):
-                if not func.docstring or len(func.docstring) < min_doc:
-                    log.debug("D001 SKIP no_docstring %s::%s", cf.path, func.qualified_name)
-                    continue
-                if func.body_statements < min_stmts:
-                    log.debug(
-                        "D001 SKIP short_body %s::%s  stmts=%d  min=%d",
-                        cf.path,
-                        func.qualified_name,
-                        func.body_statements,
-                        min_stmts,
-                    )
-                    continue
-                if is_overload_decorated(func.decorators) or is_dataclass_init(func):
-                    log.debug(
-                        "D001 SKIP overload_or_dataclass %s::%s", cf.path, func.qualified_name
-                    )
-                    continue
-                if cf.added_ranges and not cf.overlaps(func.line_start, func.line_end):
-                    log.debug("D001 SKIP not_in_diff %s::%s", cf.path, func.qualified_name)
-                    continue
+        candidates = iter_function_candidates(
+            changed_files, code=self.code, min_body_statement_count=min_stmts
+        )
+        for cf, func in candidates:
+            if not func.docstring or len(func.docstring) < min_doc:
+                log.debug("D001 SKIP no_docstring %s::%s", cf.path, func.qualified_name)
+                continue
 
-                body = func.body_source if include_comments else strip_comments(func.body_source)
-                violation = await similarity_violation(
-                    embedder,
-                    func.docstring,
-                    body,
-                    rule=self,
-                    threshold=threshold,
-                    file_path=str(cf.path),
-                    line=func.line_start,
-                    log_context=f"D001 {cf.path}::{func.qualified_name}",
-                    message_template=(
-                        f"Docstring drift on `{func.qualified_name}` "
-                        "(similarity {sim:.2f} < {threshold:.2f}). "
-                        "Update the docstring to match what the body actually does."
-                    ),
-                )
-                if violation is not None:
-                    violations.append(violation)
+            body = func.body_source if include_comments else strip_comments(func.body_source)
+            violation = await similarity_violation(
+                embedder,
+                func.docstring,
+                body,
+                rule=self,
+                threshold=threshold,
+                file_path=str(cf.path),
+                line=func.line_start,
+                log_context=f"D001 {cf.path}::{func.qualified_name}",
+                message_template=(
+                    f"Docstring drift on `{func.qualified_name}` "
+                    "(similarity {sim:.2f} < {threshold:.2f}). "
+                    "Update the docstring to match what the body actually does."
+                ),
+            )
+            if violation is not None:
+                violations.append(violation)
         return violations

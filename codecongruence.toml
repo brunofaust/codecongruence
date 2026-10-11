@@ -76,9 +76,10 @@ strip_before_compare = []
 # broke. Genuine setup duplication is still extracted into fixtures/helpers, which
 # is where the real dedup belongs.
 #
-# Without this, the rule is a trap rather than a gate: because scope = "staged",
-# it stays quiet in CI (nothing is staged in a fresh checkout) and only fires at
-# commit time — so simply touching an existing test file surfaces long-standing
-# sibling pairs (e.g. test_explicit_rule_selects_even_when_disabled vs
+# Without this, every test file the hook receives (all of them under CI's
+# `prek run --all-files`) surfaces long-standing sibling pairs (e.g.
+# test_explicit_rule_selects_even_when_disabled vs
 # test_default_selection_respects_enabled_flag, 0.99) that the author did not write.
+# Legitimately parallel src/ pairs (per-language parser methods, per-rule check
+# loops) are recorded in .codecongruence/.codecongruence-baseline.json.
 exclude = ["tests/**"]

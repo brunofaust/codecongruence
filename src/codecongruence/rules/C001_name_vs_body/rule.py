@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated, split_identifier
+from codecongruence.parsers.base import split_identifier
 from codecongruence.rules.base import (
     RuleViolation,
-    iter_parsed,
+    iter_function_candidates,
     resolve_threshold,
     similarity_violation,
     strip_comments,
@@ -71,50 +71,34 @@ class NameVsBodyRule:
         )
 
         violations: list[RuleViolation] = []
-        for cf, parser, source in iter_parsed(changed_files):
-            for func in cf.iter_functions(parser, source):
-                if func.name in ignore or func.name.startswith("test_"):
-                    log.debug("C001 SKIP ignored_name %s::%s", cf.path, func.qualified_name)
-                    continue
-                if is_overload_decorated(func.decorators) or is_dataclass_init(func):
-                    log.debug(
-                        "C001 SKIP overload_or_dataclass %s::%s", cf.path, func.qualified_name
-                    )
-                    continue
-                if func.body_statements < min_body_statement_count:
-                    log.debug(
-                        "C001 SKIP short_body %s::%s  stmts=%d  min=%d",
-                        cf.path,
-                        func.qualified_name,
-                        func.body_statements,
-                        min_body_statement_count,
-                    )
-                    continue
-                if cf.added_ranges and not cf.overlaps(func.line_start, func.line_end):
-                    log.debug("C001 SKIP not_in_diff %s::%s", cf.path, func.qualified_name)
-                    continue
+        candidates = iter_function_candidates(
+            changed_files, code=self.code, min_body_statement_count=min_body_statement_count
+        )
+        for cf, func in candidates:
+            if func.name in ignore or func.name.startswith("test_"):
+                log.debug("C001 SKIP ignored_name %s::%s", cf.path, func.qualified_name)
+                continue
+            name_expanded = split_identifier(func.name)
+            if not name_expanded or len(name_expanded.split()) < 1:
+                log.debug("C001 SKIP empty_name %s::%s", cf.path, func.qualified_name)
+                continue
 
-                name_expanded = split_identifier(func.name)
-                if not name_expanded or len(name_expanded.split()) < 1:
-                    log.debug("C001 SKIP empty_name %s::%s", cf.path, func.qualified_name)
-                    continue
-
-                body = func.body_source if include_comments else strip_comments(func.body_source)
-                violation = await similarity_violation(
-                    embedder,
-                    name_expanded,
-                    body,
-                    rule=self,
-                    threshold=threshold,
-                    file_path=str(cf.path),
-                    line=func.line_start,
-                    log_context=f"C001 {cf.path}::{func.qualified_name}",
-                    message_template=(
-                        f"Name drift on `{func.qualified_name}` "
-                        "(similarity {sim:.2f} < {threshold:.2f}). "
-                        "Rename it or change the body so the two agree."
-                    ),
-                )
-                if violation is not None:
-                    violations.append(violation)
+            body = func.body_source if include_comments else strip_comments(func.body_source)
+            violation = await similarity_violation(
+                embedder,
+                name_expanded,
+                body,
+                rule=self,
+                threshold=threshold,
+                file_path=str(cf.path),
+                line=func.line_start,
+                log_context=f"C001 {cf.path}::{func.qualified_name}",
+                message_template=(
+                    f"Name drift on `{func.qualified_name}` "
+                    "(similarity {sim:.2f} < {threshold:.2f}). "
+                    "Rename it or change the body so the two agree."
+                ),
+            )
+            if violation is not None:
+                violations.append(violation)
         return violations

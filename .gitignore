@@ -1,4 +1,4 @@
-.codecongruence
+.codecongruence/*
 !.codecongruence/.codecongruence-baseline.json
 .claude/worktrees
 

@@ -6,10 +6,10 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from codecongruence.parsers.base import is_dataclass_init, is_overload_decorated, split_identifier
+from codecongruence.parsers.base import split_identifier
 from codecongruence.rules.base import (
     RuleViolation,
-    iter_parsed,
+    iter_function_candidates,
     resolve_threshold,
     similarity_violation,
     strip_comments,
@@ -61,69 +61,53 @@ class ParamNameVsUsageRule:
         include_comments = bool(getattr(config, "include_comments", True))
 
         violations: list[RuleViolation] = []
-        for cf, parser, source in iter_parsed(changed_files):
-            for func in cf.iter_functions(parser, source):
-                if is_overload_decorated(func.decorators) or is_dataclass_init(func):
+        candidates = iter_function_candidates(
+            changed_files, code=self.code, min_body_statement_count=min_body_statement_count
+        )
+        for cf, func in candidates:
+            body = func.body_source if include_comments else strip_comments(func.body_source)
+            details_map = {name: (ann, dflt) for name, ann, dflt in func.parameter_details}
+            for param in func.parameters:
+                clean = param.lstrip("*")
+                if len(clean) < min_param_name_chars:
                     log.debug(
-                        "C002 SKIP overload_or_dataclass %s::%s", cf.path, func.qualified_name
-                    )
-                    continue
-                if func.body_statements < min_body_statement_count:
-                    log.debug(
-                        "C002 SKIP short_body %s::%s  stmts=%d  min=%d",
+                        "C002 SKIP short_param %s::%s  param=%s",
                         cf.path,
                         func.qualified_name,
-                        func.body_statements,
-                        min_body_statement_count,
+                        clean,
                     )
                     continue
-                if cf.added_ranges and not cf.overlaps(func.line_start, func.line_end):
-                    log.debug("C002 SKIP not_in_diff %s::%s", cf.path, func.qualified_name)
+
+                usage = _usage_context(clean, body)
+                if not usage:
+                    log.debug(
+                        "C002 SKIP unused_param %s::%s  param=%s",
+                        cf.path,
+                        func.qualified_name,
+                        clean,
+                    )
                     continue
 
-                body = func.body_source if include_comments else strip_comments(func.body_source)
-                details_map = {name: (ann, dflt) for name, ann, dflt in func.parameter_details}
-                for param in func.parameters:
-                    clean = param.lstrip("*")
-                    if len(clean) < min_param_name_chars:
-                        log.debug(
-                            "C002 SKIP short_param %s::%s  param=%s",
-                            cf.path,
-                            func.qualified_name,
-                            clean,
-                        )
-                        continue
-
-                    usage = _usage_context(clean, body)
-                    if not usage:
-                        log.debug(
-                            "C002 SKIP unused_param %s::%s  param=%s",
-                            cf.path,
-                            func.qualified_name,
-                            clean,
-                        )
-                        continue
-
-                    annotation, default = details_map.get(clean, ("", ""))
-                    left = " ".join(filter(None, [split_identifier(clean), annotation, default]))
-                    violation = await similarity_violation(
-                        embedder,
-                        left,
-                        usage,
-                        rule=self,
-                        threshold=threshold,
-                        file_path=str(cf.path),
-                        line=func.line_start,
-                        log_context=f"C002 {cf.path}::{func.qualified_name} param={clean}",
-                        message_template=(
-                            f"Parameter `{param}` in `{func.qualified_name}` "
-                            "doesn't match its usage "
-                            "(similarity {sim:.2f} < {threshold:.2f}). "
-                            "Rename the parameter or change how it is used."
-                        ),
-                    )
-                    if violation is not None:
-                        violations.append(violation)
+                annotation, default = details_map.get(clean, ("", ""))
+                left = " ".join(filter(None, [split_identifier(clean), annotation, default]))
+                violation = await similarity_violation(
+                    embedder,
+                    left,
+                    usage,
+                    rule=self,
+                    threshold=threshold,
+                    file_path=str(cf.path),
+                    line=func.line_start,
+                    log_context=f"C002 {cf.path}::{func.qualified_name} param={clean}",
+                    message_template=(
+                        f"Parameter `{param}` in `{func.qualified_name}` "
+                        "doesn't match its usage "
+                        "(similarity {sim:.2f} < {threshold:.2f}). "
+                        "Rename the parameter or change how it is used."
+                    ),
+                )
+                if violation is not None:
+                    violations.append(violation)
         return violations
 
 

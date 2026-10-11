@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-10-11T22:52:30.888661+00:00",
+  "version": 1,
+  "violations": [
+    {
+      "code": "C003",
+      "file_path": "src/codecongruence/parsers/javascript.py",
+      "line": 363,
+      "message": "`JavaScriptParser.iter_functions` (src/codecongruence/parsers/javascript.py:363) and `PythonParser.iter_functions` (src/codecongruence/parsers/python.py:373) have similar bodies (similarity 0.98 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "src/codecongruence/parsers/javascript.py",
+      "line": 379,
+      "message": "`JavaScriptParser.iter_comments` (src/codecongruence/parsers/javascript.py:379) and `PythonParser.iter_comments` (src/codecongruence/parsers/python.py:396) have similar bodies (similarity 0.97 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "src/codecongruence/rules/C001_name_vs_body/rule.py",
+      "line": 50,
+      "message": "`NameVsBodyRule.check` (src/codecongruence/rules/C001_name_vs_body/rule.py:50) and `ParamNameVsUsageRule.check` (src/codecongruence/rules/C002_param_name_vs_usage/rule.py:42) have similar bodies (similarity 0.97 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "src/codecongruence/rules/C001_name_vs_body/rule.py",
+      "line": 50,
+      "message": "`NameVsBodyRule.check` (src/codecongruence/rules/C001_name_vs_body/rule.py:50) and `DocstringVsBodyRule.check` (src/codecongruence/rules/D001_docstring_vs_body/rule.py:40) have similar bodies (similarity 0.95 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    },
+    {
+      "code": "C003",
+      "file_path": "src/codecongruence/rules/C002_param_name_vs_usage/rule.py",
+      "line": 42,
+      "message": "`ParamNameVsUsageRule.check` (src/codecongruence/rules/C002_param_name_vs_usage/rule.py:42) and `DocstringVsBodyRule.check` (src/codecongruence/rules/D001_docstring_vs_body/rule.py:40) have similar bodies (similarity 0.96 >= 0.92). Consider merging or extracting shared logic.",
+      "rule_id": "duplicate_functions"
+    }
+  ]
+}
